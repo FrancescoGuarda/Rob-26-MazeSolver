@@ -26,22 +26,22 @@ di risoluzione del labirinto senza disporre di un robot fisico. Il linguaggio di
 
 ## 1. Obiettivo del progetto
 
-Testare e valutare l'efficienza ed efficacia di differenti algoritmi di esplorazioni di un `maze`, su un dataset di labirinti predefiniti estratti dalla collezione `maze-collection` impiegata come benchmark per le competizioni di Micromouse. Analizzare i risultat 
+Nelle competizioni di micromouse, l'obbiettivo principale è quello di esplorare e mappare parzialmente o completamente il `maze` **online** (**full exploration**) per poi identificare il percorso minimo **offline** per raggiungere il goal dallo stato iniziale entro i limiti di quanto esplorato. Nell'ambito di questo progetto, ci poniamo nello scenario in cui l'obbiettivo dell'agente è quello di raggiungere il goal (di cui si assume conoscere le coordinate), riducendo al minimo la fase di esplorazione del `maze`, prioritizzando l'efficienza ed efficacia nell'individuazione di un percorso, anche sub-ottimo, per raggiungere il goal (evitando **full exploration**).
 
-Nelle competizioni di micromouse, l'obbiettivo principale è quello di mappare completamente il `maze` **online** (**full exploration**) per poi identificare il percorso minimo **offline** per raggiungere il goal. 
-Diversamente dalle competizioni standard, l'obbiettivo di questo progetto è quello di porsi in scenari 
+Nel dettaglio, l'obbiettivo del progetto è quello di implementare e testare differenti strategie di esplorazione del `maze`,ad esempio:  wall-following, flood fill e A*; e confrontarne le prestazioni in termini di efficienza ed efficacia nell'individuazione di un percorso per raggiungere il goal. Poichè l'agente si concentra nell'individuazione di un percorso, la ricerca **offline** del percorso minimo non rientra negli obiettivi dell'agente, ma viene comunque impiegata come indicatore nelle modalità descritte al punto [4](#4-risultati-attesi-e-metriche-di-valutazione).
 
-Tuttavia, nello scenario in cui l'obbiettivo di un agente è quello di raggiungere i
-L'obiettivo è quello di identificare le strategie che minimizzino la fase dell'esplorazione, piuttosto che l'identificazione del percorso minimo, ponendoci nello scenario in cui il goal dell'agente è raggiungere la zona obiettivo nella maniera più efficiente ed efficace possibile (e.g., valutando il numero di mosse, celle visitate), evitando l'esplorazione completa del `maze`, che rappresenta invece il problema standard nelle competizioni Micromouse. Una volta esplorato il `maze` infatti, l'identificazione del percorso minimo è un problema triviale, e esplorata la totalità del `maze` restituirebbe sempre il medesimo percorso minimo; In un contesto online invece, l'esplorazione completa del `maze` potrebbe non essere desiderabile, 
+L'obiettivo è quello di valutare le strategie sopra citate, nei termini di efficacia ed efficienza descritti al punto [4](#4-risultati-attesi-e-metriche-di-valutazione), in relazione a differenti configurazioni del `maze` a complessità crescente e casi critici/sintomatici (ad esempio labirinti con dead-end, loop, isole, ecc.) estratti dalle collezioni di labrinti messi a disposizioni per le competizioni ufficiali di micromouse (ad esempio [`maze-collection`](https://www.tcp4me.com/mmr/mazes/)), come descritto nella sezione [3](#3-scenari-di-valutazione).
+
+Di seguito è riportata una plausibile suddivisione dei contenuti della relazione finale:
 
 **Table of contents (relazione)**:
 - Descrizione del problema di MicroMouse e dell'interfaccia del simulatore `mms`
-- Descrizione degli algoritmi di esplorazione implementati (wall-following, flood fill, A* incrementale) ad alto livello
+- Descrizione degli algoritmi di esplorazione implementati (wall-following, flood fill, A*) ad alto livello
 - Confronto delle mappe costruite dagli algoritmi di esplorazione su sottoinsieme di labirinti del test set
-- Descrizione gestione dei casi limite (dead-end, loop, next-point)
+- Descrizione gestione dei casi limite (dead-end, loop, next-point) secondo le strategie implementate
 - Descrizione dell'effettiva implementazione delle strategie di esplorazione 
 - Presentazione dei casi di test, e analisi critica dei risultati ottenuti, in relazione alle metriche di valutazione definite.
-
+- Conclusioni e possibili sviluppi futuri
 
 ## 2. Componenti software
 
@@ -50,7 +50,7 @@ L'obiettivo è quello di identificare le strategie che minimizzino la fase dell'
 
 ## 3. Scenari di valutazione
 
-I tre algoritmi citati al punto [1](#1-obiettivo-del-progetto) (wall-following, flood fill, A* incrementale) saranno implementati e testati su un set di labirinti di complessità crescente, selezionati dalla collezione `maze-collection`. La valutazione sarà basata sulle metriche definite al punto [4](#4-risultati-attesi-e-metriche-di-valutazione), con particolare attenzione alla capacità di minimizzare il numero di mosse necessarie per raggiungere il goal, evitando l'esplorazione completa del `maze` quando possibile.
+Gli algoritmi saranno testati su un set di labirinti di complessità crescente, selezionati dalla collezione `maze-collection`. Verranno selezionati labirinti con caratteristiche diverse, come ad esempio labirinti con dead-end, loop, isole, ecc., al fine di valutare le prestazioni degli algoritmi in scenari diversi e mettere in evidenza eventuali punti di forza e criticità delle strategie implementate (es., wall-following fallisce in labirinti con isole).
 
 ## 4. Risultati attesi e metriche di valutazione
 
