@@ -65,3 +65,6 @@ temp/
 .DS_Store
 .AppleDouble
 .LSOverride
+
+# papers
+docs/articles/*
