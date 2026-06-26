@@ -26,7 +26,7 @@ di risoluzione del labirinto senza disporre di un robot fisico. Il linguaggio di
   - tempo di completamento della simulazione;
   - robustezza rispetto a maze di complessità crescente.
 
-# Proposta progetto di Robotica 
+# Proposta progetto di Robotica
 
 **Materiale di riferimento**:
 - art. 1 [Micromouse 3D simulator with dynamics capability: a Unity environment approach](articles/s42452-021-04239-7.pdf)
@@ -39,54 +39,72 @@ di risoluzione del labirinto senza disporre di un robot fisico. Il linguaggio di
 
 ## 1. Obiettivo del progetto
 
-Nelle competizioni di micromouse, l'obbiettivo principale è quello di esplorare e mappare parzialmente o completamente il `maze` **online** (**full exploration**) per poi identificare il percorso minimo **offline** per raggiungere il goal dallo stato iniziale entro i limiti di quanto esplorato. Nell'ambito di questo progetto, ci poniamo nello scenario in cui l'obbiettivo dell'agente è quello di raggiungere il goal (di cui si assume conoscere le coordinate), riducendo al minimo la fase di esplorazione del `maze`, prioritizzando l'efficienza ed efficacia nell'individuazione di un percorso, anche sub-ottimo, per raggiungere il goal (evitando **full exploration**).
+Nelle competizioni di Micromouse, l'obiettivo principale consiste nell'esplorare e mappare parzialmente o completamente il `maze` **online** (**full exploration**), per poi identificare il percorso minimo **offline** verso il goal a partire dallo stato iniziale, entro i limiti della porzione esplorata. Nell'ambito di questo progetto, ci collochiamo in uno scenario differente: l'obiettivo dell'agente è raggiungere il goal (di cui si assume di conoscere le coordinate), riducendo al minimo la fase di esplorazione del `maze` e privilegiando l'efficienza e l'efficacia nell'individuazione di un percorso, anche sub-ottimo (evitando pertanto la **full exploration**).
 
-Nel dettaglio, l'obbiettivo del progetto è quello di implementare e testare differenti strategie di esplorazione del `maze`,ad esempio:  wall-following, flood fill e A*; e confrontarne le prestazioni in termini di efficienza ed efficacia nell'individuazione di un percorso per raggiungere il goal. Poichè l'agente si concentra nell'individuazione di un percorso, la ricerca **offline** del percorso minimo non rientra negli obiettivi dell'agente, ma viene comunque impiegata come indicatore nelle modalità descritte al punto [4](#4-risultati-attesi-e-metriche-di-valutazione).
+In dettaglio, l'obiettivo del progetto è implementare e testare tre strategie di esplorazione del `maze` — wall-following, flood fill e A* — e confrontarne le prestazioni in termini di efficienza ed efficacia nell'individuazione di un percorso verso il goal. Poiché l'agente è orientato al raggiungimento del goal piuttosto che alla mappatura completa, la ricerca **offline** del percorso minimo non rientra tra gli obiettivi operativi dell'agente, ma viene comunque calcolata e impiegata come indicatore di qualità della soluzione trovata, secondo le modalità descritte nella sezione [4](#4-risultati-attesi-e-metriche-di-valutazione).
 
-L'obiettivo è quello di valutare le strategie sopra citate, nei termini di efficacia ed efficienza descritti al punto [4](#4-risultati-attesi-e-metriche-di-valutazione), in relazione a differenti configurazioni del `maze` a complessità crescente e casi critici/sintomatici (ad esempio labirinti con dead-end, loop, isole, ecc.) estratti dalle collezioni di labrinti messi a disposizioni per le competizioni ufficiali di micromouse (ad esempio [`maze-collection`](https://www.tcp4me.com/mmr/mazes/)), come descritto nella sezione [3](#3-scenari-di-valutazione).
+Le strategie saranno valutate nei termini di efficienza ed efficacia definiti nella sezione [4](#4-risultati-attesi-e-metriche-di-valutazione), in relazione a diverse configurazioni del `maze` a complessità crescente e a casi critici/sintomatici (ad esempio, labirinti con dead-end, loop e isole), selezionati dalla collezione ufficiale di labirinti per le competizioni di Micromouse (ad esempio [`maze-collection`](https://www.tcp4me.com/mmr/mazes/)), come descritto nella sezione [3](#3-scenari-di-valutazione).
 
-Di seguito è riportata una plausibile suddivisione dei contenuti della relazione finale:
+Di seguito è riportata la struttura prevista per la relazione finale:
 
-**Table of contents (relazione)**:
-- Introduzione
-- Descrizione del problema di MicroMouse e dell'interfaccia del simulatore `mms` e delle specifiche impiegate (ed eventuali modifiche apportate) nelle simulazioni realizzate
-- Descrizione degli algoritmi di esplorazione implementati (wall-following, flood fill, A*) ad alto livello, con dettagli sulla gestione dei casi limite (dead-end, loop, next-point). 
-- Descrizione degli scenari di valutazione (`maze` a complessità incrementale, e casi critici/sintomatici) impiegati; e dei criteri e metriche di valutazione adottati.
-- Report dei risultati ottenuti, con rappresentazione grafica dei dati raccolti e confronto tra le strategie di esplorazione implementate e analisi critica delle strategie di esplorazione in relazione alle metriche di valutazione definite.
-- Conclusioni e possibili sviluppi futuri
+**Indice della relazione**:
+1. Introduzione
+2. Descrizione del problema Micromouse, dell'interfaccia del simulatore `mms` e delle specifiche implementative adottate (con eventuali adattamenti apportati)
+3. Descrizione degli algoritmi di esplorazione implementati (wall-following, flood fill, A*), con dettagli sulla gestione dei casi limite (dead-end, loop, selezione del prossimo obiettivo di esplorazione)
+4. Descrizione degli scenari di valutazione (`maze` a complessità incrementale e casi critici/sintomatici) e delle metriche di valutazione adottate
+5. Report dei risultati, con visualizzazioni grafiche e confronto critico tra le strategie in relazione alle metriche definite
+6. Conclusioni e possibili sviluppi futuri
 
 ## 2. Componenti software
 
-- simulatore di `maze` : [`mms`](https://github.com/mackorone/mms)
-- maze file collection : [`maze-collection`](https://www.tcp4me.com/mmr/mazes/)
+- **Simulatore di `maze`**: [`mms`](https://github.com/mackorone/mms) — comunica con l'algoritmo tramite `stdin`/`stdout`; il linguaggio di implementazione scelto è **Python**, compatibile con l'interfaccia fornita dal simulatore.
+- **Collezione di labirinti**: [`maze-collection`](https://www.tcp4me.com/mmr/mazes/) — labirinti in formato standard per le competizioni ufficiali di Micromouse.
+- **Ricerca offline del percorso minimo**: algoritmo BFS (Breadth-First Search) o Dijkstra applicato alla mappa interna costruita dall'agente e alla mappa completa del `maze`, per il calcolo degli indicatori di qualità del percorso.
 
 ## 3. Scenari di valutazione
 
-Gli algoritmi saranno testati su un set di labirinti di complessità crescente, selezionati dalla collezione `maze-collection`. Verranno selezionati labirinti con caratteristiche diverse, come ad esempio labirinti con dead-end, loop, isole, ecc., al fine di valutare le prestazioni degli algoritmi in scenari diversi e mettere in evidenza eventuali punti di forza e criticità delle strategie implementate (es., wall-following fallisce in labirinti con isole).
+TODO: review
+
+Gli algoritmi saranno testati su un insieme di labirinti di complessità crescente, selezionati dalla collezione `maze-collection`. Nello specifico, si prevede di impiegare almeno **sei labirinti**, raggruppati in tre livelli di difficoltà:
+
+- **Livello 1 — semplice**: labirinti di dimensione ridotta (es. 8×8 o 10×10) privi di isole, con struttura prevalentemente ad albero (no loop), adatti a verificare il corretto funzionamento di base degli algoritmi;
+- **Livello 2 — intermedio**: labirinti di dimensione media (es. 16×16) con la presenza di loop e dead-end, che mettono alla prova le strategie di backtracking e la selezione del prossimo obiettivo di esplorazione;
+- **Livello 3 — complesso**: labirinti di dimensione maggiore (es. 32×32) con isole, loop multipli e strutture sintomatiche, in grado di evidenziare i limiti del wall-following e di valutare la robustezza di flood fill e A*.
+
+La selezione dei labirinti mira a coprire scenari diversificati, al fine di evidenziare punti di forza e criticità di ciascuna strategia. In particolare, si osserverà come il wall-following fallisca nei labirinti con isole (pareti disconnesse dal perimetro), a differenza di flood fill e A*, che non dipendono dalla connettività delle pareti.
 
 ## 4. Risultati attesi e metriche di valutazione
 
-Di seguito sono riportate le metriche di valutazione impiegate per confrontare le strategie di esplorazione: 
+Le seguenti metriche saranno impiegate per confrontare le strategie di esplorazione:
 
-- **efficienza di esplorazione**: numero totale di mosse necessarie per raggiungere il goal
-- **efficacia di esplorazione**: numero totale di celle distinte visitate per raggiungere il goal (porzione di `maze` esplorata) - percentuale di `maze` esplorato
-- **numero totale di celle visitate**: numero totale di celle visitate per raggiungere il goal (porzione di `maze` esplorata), sommando tutte le occorrenze di visita per cella
-- **percorso minimo di esplorazione**: lunghezza del percorso minimo individuato offline sulla mappa interna costruita dall'agente
-- **percorso minimo del maze**: lunghezza del percorso minimo individuato offline sulla mappa completa del `maze`
-- **tempo di completamento della simulazione**: tempo totale impiegato per completare la simulazione (raggiungere il goal da s0)
-- **robustezza**: capacità di scalare efficacemente a maze di complessità crescente, e di gestire casi limite come dead-end, loop, isole, ecc. TODO: definire come valutarla
+- **Efficienza di esplorazione**: numero totale di mosse (passi e rotazioni) necessarie per raggiungere il goal a partire dallo stato iniziale.
+- **Efficacia di esplorazione**: numero di celle distinte visitate al momento del raggiungimento del goal, espresso anche come percentuale rispetto alla dimensione totale del `maze`.
+- **Numero totale di celle visitate**: numero complessivo di visite a celle durante l'esplorazione, contando ogni accesso anche se la stessa cella viene visitata più volte. Questa metrica è distinta dalla precedente e consente di valutare il grado di ridondanza nell'esplorazione.
+- **Percorso minimo sulla mappa interna**: lunghezza del percorso minimo calcolato **offline** (tramite BFS/Dijkstra) sulla mappa parziale costruita dall'agente al momento del raggiungimento del goal.
+- **Percorso minimo sul `maze` completo**: lunghezza del percorso minimo calcolato **offline** sulla mappa completa del `maze`, disponibile a posteriori. Confrontando questa metrica con la precedente si ottiene una misura della qualità della mappa interna costruita dall'agente.
+- **Tempo di completamento della simulazione**: tempo totale impiegato dall'agente per raggiungere il goal a partire dallo stato iniziale.
+- **Robustezza**: valutata come tasso di successo (percentuale di scenari in cui l'agente raggiunge il goal) e come degradazione relativa delle metriche di efficienza ed efficacia al crescere della complessità del `maze`. Un algoritmo robusto dovrebbe mantenere un tasso di successo del 100% e una degradazione contenuta delle prestazioni sui labirinti complessi.
 
-Per ogni simulazione le metriche saranno raccolte in file di log in formato `json` o `csv`, al cui interno saranno riportati i valori consuntivi rispetto a ciascuna, e la rappresentazione interna della mappa costruita dall'agente secondo due matrici `R x C` (con R pari al numero di righe del maze, e C pari al numero di colonne), nella prima, andando a definire per ogni cella esplorata una 4-upla `trbl` con `t, r, b, l = {0,1}`, ed ogni cifra indica la presenza (`1`) o assenza (`0`) di un muro in posizione: `t` -> top, `r` -> right, `b` -> bottom, `l` -> left della rispettiva cella (`None` per le celle non esplorate); mentre la seconda tiene traccia delle occorrenze di visita di ciascuna cella, andando ad assegnare un valore numerico ad ogni cella: `0` per celle non visitate, e `n > 1` per celle visitate `n` volte, e . In questo modo sarà possibile generare `heatmap` di esplorazione del `maze` sulla base del numero di visite per cella, e `barplot` del numero totale di celle visitate. Inoltre verrà salvato anche il percorso minimo individuato `offline` sia della mappa interna costruita dall'agente, sia della mappa completa del `maze`, per permettere un confronto qualitativo tra i due percorsi.  
+Per ogni simulazione, le metriche saranno raccolte in file di log in formato `json` o `csv`. Ciascun file conterrà i valori consuntivi di tutte le metriche, nonché la rappresentazione interna della mappa costruita dall'agente, codificata in due matrici `R × C` (dove R e C sono rispettivamente il numero di righe e di colonne del `maze`):
 
-Ci aspettiamo che A* individui il percorso minimo, tuttavia visiti le medesime celle con un alta frequenza, risultando in una minore efficienza rispetto a strategie di depth-first search come flood-fill. Chiaramente i risultati dipenderanno dalla configurazione del `maze` e dalla capacità di scalare efficacemente da parte degli algoritmi. 
+1. **Matrice delle pareti**: per ogni cella esplorata, una 4-upla `trbl` con `t, r, b, l ∈ {0, 1}`, dove ogni valore indica la presenza (`1`) o assenza (`0`) di un muro nella direzione corrispondente — `t` (top), `r` (right), `b` (bottom), `l` (left). Le celle non esplorate sono rappresentate come `None`.
+2. **Matrice delle visite**: per ogni cella, un valore intero non negativo che indica il numero di volte in cui la cella è stata visitata — `0` per le celle mai visitate, `n ≥ 1` per le celle visitate `n` volte.
+
+A partire dalla matrice delle visite sarà possibile generare **heatmap** dell'esplorazione del `maze` e **barplot** comparativi del numero totale di celle visitate per strategia. Verranno inoltre salvati i percorsi minimi individuati **offline** sia sulla mappa interna dell'agente sia sulla mappa completa del `maze`, per consentire un confronto qualitativo tra i due.
+
+In merito ai risultati attesi: si prevede che A* guidi l'agente verso percorsi di costo inferiore, ma che possa richiedere frequenti ricicli e ri-pianificazioni al momento della scoperta di nuovi muri, risultando potenzialmente meno efficiente in termini di numero di mosse rispetto al flood fill. Quest'ultimo, basandosi su una propagazione BFS dei valori di distanza aggiornati dinamicamente, tende a navigare in modo più diretto verso il goal, con minori revisioni del piano. Il wall-following risulterà la strategia più semplice e prevedibile, ma anche la meno efficace e la meno robusta, in particolare nei labirinti con isole. Chiaramente, i risultati dipenderanno dalla specifica configurazione del `maze` e dalle scelte implementative adottate.
 
 ## 5. Suddivisione del lavoro
 
-Da definirsi in corso d'opera in base alle competenze e preferenze dei membri del gruppo, con l'obiettivo di garantire una distribuzione equa delle attività e una collaborazione efficace. Potrebbe essere utile suddividere il lavoro in fasi, ad esempio:
+TODO: review
 
-- fase 1: studio del problema e familiarizzazione con il simulatore `mms` (tutti i membri);
-- fase 2: implementazione degli algoritmi di esplorazione (suddivisi tra i membri);
-- fase 3: costruzione e aggiornamento della mappa interna del labirinto (suddiviso tra i membri);
-- fase 4: gestione dei casi di dead-end e scelta del prossimo obiettivo di esplorazione (suddiviso tra i membri);
-- fase 5: valutazione su maze diversi e confronto tra strategie (tutti i membri);
-- fase 6: analisi critica dei risultati e stesura della relazione finale (tutti i membri).
+Il lavoro sarà organizzato in fasi sequenziali, con attività parallele nella fase di implementazione, al fine di garantire una distribuzione equa e una collaborazione efficace tra i membri del gruppo:
+
+- **Fase 1 — Studio e familiarizzazione** (tutti i membri): studio del problema Micromouse, dell'interfaccia del simulatore `mms` e del formato dei file di labirinto; configurazione dell'ambiente di sviluppo e test di un algoritmo di esempio.
+- **Fase 2 — Implementazione degli algoritmi** (suddivisa tra i membri):
+  - membro A: algoritmo wall-following e modulo di gestione della mappa interna (`maze map`);
+  - membro B: algoritmo flood fill con aggiornamento dinamico dei valori di distanza;
+  - membro C: algoritmo A* incrementale (online) con ri-pianificazione alla scoperta di nuovi muri.
+- **Fase 3 — Integrazione e logging** (tutti i membri): integrazione dei moduli, implementazione del sistema di logging delle metriche in formato `json`/`csv` e verifica del corretto funzionamento su labirinti semplici.
+- **Fase 4 — Valutazione sperimentale** (tutti i membri): esecuzione delle simulazioni sull'insieme di labirinti selezionati, raccolta dei dati e generazione delle visualizzazioni (heatmap, barplot, confronto percorsi minimi).
+- **Fase 5 — Analisi e stesura della relazione** (tutti i membri): analisi critica dei risultati, confronto tra le strategie rispetto alle metriche definite e redazione della relazione finale.
