@@ -63,15 +63,15 @@ Di seguito è riportata la struttura prevista per la relazione finale:
 
 ## 3. Scenari di valutazione
 
-TODO: review
+Gli algoritmi saranno testati su un insieme di labirinti di complessità crescente, selezionati dalla collezione `maze-collection`. Nello specifico, si prevede di impiegare almeno **nove labirinti**, raggruppati in tre livelli di difficoltà:
 
-Gli algoritmi saranno testati su un insieme di labirinti di complessità crescente, selezionati dalla collezione `maze-collection`. Nello specifico, si prevede di impiegare almeno **sei labirinti**, raggruppati in tre livelli di difficoltà:
-
-- **Livello 1 — semplice**: labirinti di dimensione ridotta (es. 8×8 o 10×10) privi di isole, con struttura prevalentemente ad albero (no loop), adatti a verificare il corretto funzionamento di base degli algoritmi;
-- **Livello 2 — intermedio**: labirinti di dimensione media (es. 16×16) con la presenza di loop e dead-end, che mettono alla prova le strategie di backtracking e la selezione del prossimo obiettivo di esplorazione;
-- **Livello 3 — complesso**: labirinti di dimensione maggiore (es. 32×32) con isole, loop multipli e strutture sintomatiche, in grado di evidenziare i limiti del wall-following e di valutare la robustezza di flood fill e A*.
+- **Livello 1 — semplice**: labirinti di dimensione standard (16x16) o ridotta (es. 8×8 o 10×10) privi di isole, con struttura prevalentemente ad albero (no loop), adatti a verificare il corretto funzionamento di base degli algoritmi;
+- **Livello 2 — intermedio**: labirinti di dimensione standard (16×16) con la presenza di loop e dead-end, che mettono alla prova le strategie di backtracking e la selezione del prossimo obiettivo di esplorazione;
+- **Livello 3 — complesso**: labirinti di dimensione standard (16x16) con isole, loop multipli e strutture sintomatiche, in grado di evidenziare i limiti del wall-following e di valutare la robustezza di flood fill e A*.
 
 La selezione dei labirinti mira a coprire scenari diversificati, al fine di evidenziare punti di forza e criticità di ciascuna strategia. In particolare, si osserverà come il wall-following fallisca nei labirinti con isole (pareti disconnesse dal perimetro), a differenza di flood fill e A*, che non dipendono dalla connettività delle pareti.
+
+> La difficoltà dei labirinti sarà valutata come proposto nell'articolo [Using search algorithm statistics for assessing maze and puzzle difficulty](https://www.sciencedirect.com/science/article/pii/S1875952125000059) che sfrutta la cardinalità della **closed-list** (numero di nodi espansi) nella ricerca del percorso minimo mediante BFS come indice **euristico** di *difficoltà* del maze. La quantificazione degli intervalli di cardinalità della closed-list per ciascun livello di difficoltà sarà effettuata in fase di test, al fine di selezionare labirinti rappresentativi per ciascun livello.
 
 ## 4. Risultati attesi e metriche di valutazione
 
@@ -96,15 +96,13 @@ In merito ai risultati attesi: si prevede che A* guidi l'agente verso percorsi d
 
 ## 5. Suddivisione del lavoro
 
-TODO: review
-
 Il lavoro sarà organizzato in fasi sequenziali, con attività parallele nella fase di implementazione, al fine di garantire una distribuzione equa e una collaborazione efficace tra i membri del gruppo:
 
 - **Fase 1 — Studio e familiarizzazione** (tutti i membri): studio del problema Micromouse, dell'interfaccia del simulatore `mms` e del formato dei file di labirinto; configurazione dell'ambiente di sviluppo e test di un algoritmo di esempio.
 - **Fase 2 — Implementazione degli algoritmi** (suddivisa tra i membri):
   - membro A: algoritmo wall-following e modulo di gestione della mappa interna (`maze map`);
-  - membro B: algoritmo flood fill con aggiornamento dinamico dei valori di distanza;
-  - membro C: algoritmo A* incrementale (online) con ri-pianificazione alla scoperta di nuovi muri.
+  - membro B: algoritmo flood fill
+  - membro B: algoritmo A* (online) con euristica ammissibile (e.g., distanza di Manhattan).
 - **Fase 3 — Integrazione e logging** (tutti i membri): integrazione dei moduli, implementazione del sistema di logging delle metriche in formato `json`/`csv` e verifica del corretto funzionamento su labirinti semplici.
 - **Fase 4 — Valutazione sperimentale** (tutti i membri): esecuzione delle simulazioni sull'insieme di labirinti selezionati, raccolta dei dati e generazione delle visualizzazioni (heatmap, barplot, confronto percorsi minimi).
 - **Fase 5 — Analisi e stesura della relazione** (tutti i membri): analisi critica dei risultati, confronto tra le strategie rispetto alle metriche definite e redazione della relazione finale.
