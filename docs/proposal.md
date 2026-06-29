@@ -1,41 +1,4 @@
-# Regole principali e modalità di consegna
-
-L’avvio del progetto deve essere concordato preventivamente con i docenti. Prima di iniziare il lavoro, il gruppo deve inviare via email al sottoscritto e al dott. Luigi Gargioni un documento sintetico di 1-2 pagine che descriva la proposta progettuale.
-La proposta deve essere basata su uno dei temi suggeriti, eventualmente adattato al numero di partecipanti, e deve indicare in modo chiaro:
-
-- obiettivo del progetto;
-- componenti software o strumenti che si intende usare;
-- scenario o dominio di valutazione;
-- risultati attesi e metriche di valutazione;
-- suddivisione indicativa del lavoro, nel caso di gruppi da 2 o 3 persone.
-
-# Progetto scelto: 3 - (Pratico) Micromouse con simulatore di maze
-
-Progetto adatto a chi è interessato alla pianificazione e al controllo di un robot mobile in un ambiente discreto e parzialmente osservabile. L’obiettivo è sviluppare un algoritmo per un robot Micromouse in grado di esplorare un labirinto, costruire una rappresentazione interna delle pareti osservate e raggiungere la zona obiettivo minimizzando il costo del percorso. Il progetto deve essere sviluppato utilizzando il simulatore mms (https://github.com/mackorone/mms), che permette di testare algoritmi
-di risoluzione del labirinto senza disporre di un robot fisico. Il linguaggio di programmazione può essere scelto dal gruppo, purché sia compatibile con l’interfaccia del simulatore. Attività principali:
-
-- studio del problema Micromouse e dell’interfaccia fornita da mms;
-- implementazione di un algoritmo di esplorazione del maze, ad esempio wall following, flood fill, A* incrementale o una strategia equivalente;
-- costruzione e aggiornamento di una mappa interna del labirinto a partire dalle osservazioni disponibili;
-- gestione dei casi di dead-end, ritorno a celle già visitate e scelta del prossimo obiettivo di esplorazione;
-- valutazione su maze diversi, includendo almeno un confronto tra due strategie o due configurazioni dell’algoritmo;
-- analisi critica rispetto a:
-  - numero di celle visitate;
-  - lunghezza del percorso finale;
-  - numero di mosse o turni effettuati;
-  - tempo di completamento della simulazione;
-  - robustezza rispetto a maze di complessità crescente.
-
 # Proposta progetto di Robotica
-
-**Materiale di riferimento**:
-- art. 1 [Micromouse 3D simulator with dynamics capability: a Unity environment approach](articles/s42452-021-04239-7.pdf)
-- art. 2 [Optimizing Tremaux Algorithm in Micromouse Using Potential Values](articles/7_Sanjaya_Vol3_No2.pdf)
-- video [Virtual Micromouse Maze Mapping and Solving Demonstration](https://www.youtube.com/watch?v=6y4nrnfZ1k0)
-- video [Micromouse Maze Simulator - 2018 Japan Halfsize(32x32)](https://www.youtube.com/watch?v=-r8a8aPRYAQ)
-- video [Micromouse Maze simulation](https://www.youtube.com/watch?v=0YId4SPJrWo)
-- post [Micromouse from scratch](https://medium.com/@minikiraniamayadharmasiri/micromouse-from-scratch-algorithm-maze-traversal-shortest-path-floodfill-741242e8510)
-- post [Floodfill Module](https://projects.ieeebruins.com/micromouse/floodfill-module)
 
 ## 1. Obiettivo del progetto
 
@@ -85,10 +48,10 @@ Le seguenti metriche saranno impiegate per confrontare le strategie di esplorazi
 - **Tempo di completamento della simulazione**: tempo totale impiegato dall'agente per raggiungere il goal a partire dallo stato iniziale.
 - **Robustezza**: valutata come tasso di successo (percentuale di scenari in cui l'agente raggiunge il goal) e come degradazione relativa delle metriche di efficienza ed efficacia al crescere della complessità del `maze`. Un algoritmo robusto dovrebbe mantenere un tasso di successo del 100% e una degradazione contenuta delle prestazioni sui labirinti complessi.
 
-Per ogni simulazione, le metriche saranno raccolte in file di log in formato `json` o `csv`. Ciascun file conterrà i valori consuntivi di tutte le metriche, nonché la rappresentazione interna della mappa costruita dall'agente, codificata in due matrici `R × C` (dove R e C sono rispettivamente il numero di righe e di colonne del `maze`):
+Per ogni simulazione, le metriche saranno raccolte in file di log in formato `json` o `csv`. Ciascun file conterrà i valori consuntivi di tutte le metriche, nonché la rappresentazione interna della mappa costruita dall'agente, codificata secondo due matrici `R × C` (dove R e C sono rispettivamente il numero di righe e di colonne del `maze`):
 
-1. **Matrice delle pareti**: per ogni cella esplorata, una 4-upla `trbl` con `t, r, b, l ∈ {0, 1}`, dove ogni valore indica la presenza (`1`) o assenza (`0`) di un muro nella direzione corrispondente — `t` (top), `r` (right), `b` (bottom), `l` (left). Le celle non esplorate sono rappresentate come `None`.
-2. **Matrice delle visite**: per ogni cella, un valore intero non negativo che indica il numero di volte in cui la cella è stata visitata — `0` per le celle mai visitate, `n ≥ 1` per le celle visitate `n` volte.
+1. **Matrice delle pareti**: per ogni cella esplorata, un valore intero da `1` a `16` rappresenta la configurazione dei muri circostanti, secondo il dizionario riportato nella seguente figura ![Dizionario numeri configurazione delle pareti](res/wall_configurations_dict.png). Le celle mai visitate sono codificate con il valore `0`.
+2. **Matrice delle visite**: per ogni cella, un valore intero non negativo che indica il numero di volte in cui la cella è stata visitata — `0` per le celle mai visitate, $n \ge 1$ per le celle visitate `n` volte.
 
 A partire dalla matrice delle visite sarà possibile generare **heatmap** dell'esplorazione del `maze` e **barplot** comparativi del numero totale di celle visitate per strategia. Verranno inoltre salvati i percorsi minimi individuati **offline** sia sulla mappa interna dell'agente sia sulla mappa completa del `maze`, per consentire un confronto qualitativo tra i due.
 
@@ -101,7 +64,7 @@ Il lavoro sarà organizzato in fasi sequenziali, con attività parallele nella f
 - **Fase 1 — Studio e familiarizzazione** (tutti i membri): studio del problema Micromouse, dell'interfaccia del simulatore `mms` e del formato dei file di labirinto; configurazione dell'ambiente di sviluppo e test di un algoritmo di esempio.
 - **Fase 2 — Implementazione degli algoritmi** (suddivisa tra i membri):
   - membro A: algoritmo wall-following e modulo di gestione della mappa interna (`maze map`);
-  - membro B: algoritmo flood fill
+  - membro B: algoritmo flood fill;
   - membro B: algoritmo A* (online) con euristica ammissibile (e.g., distanza di Manhattan).
 - **Fase 3 — Integrazione e logging** (tutti i membri): integrazione dei moduli, implementazione del sistema di logging delle metriche in formato `json`/`csv` e verifica del corretto funzionamento su labirinti semplici.
 - **Fase 4 — Valutazione sperimentale** (tutti i membri): esecuzione delle simulazioni sull'insieme di labirinti selezionati, raccolta dei dati e generazione delle visualizzazioni (heatmap, barplot, confronto percorsi minimi).
