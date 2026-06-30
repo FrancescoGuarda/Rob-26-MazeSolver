@@ -40,8 +40,13 @@ Follow the detailed setup instructions in [mms.md](docs/mms.md) to install the M
 
 ## Documentation
 
+**Setup and Usage:**
 - **[mms.md](docs/mms.md)** — Complete setup and usage guide for the MMS simulator integration
+- **[mazes/README.md](mazes/README.md)** — Maze file format specifications and difficulty levels
+
+**Project Documentation:**
 - **[docs/Rob_26_proposal.md](docs/Rob_26_proposal.md)** — Original project proposal and objectives
+- **[docs/notes.md](docs/notes.md)** — Development notes, design decisions, and algorithm specifications
 - **[docs/Rob-26-MazeSolver_report.md](docs/Rob-26-MazeSolver_report.md)** — Final project report with experimental results and analysis
 
 ## Citations
