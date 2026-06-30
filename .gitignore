@@ -68,3 +68,6 @@ temp/
 
 # papers
 docs/articles/*
+
+# Applications
+app/*

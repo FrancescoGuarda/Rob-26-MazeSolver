@@ -35,11 +35,14 @@ pip install -r requirements.txt
 
 See [requirements.txt](requirements.txt) for the full list of dependencies.
 
+4. Download and configure the MMS simulator:
+Follow the detailed setup instructions in [mms.md](docs/mms.md) to install the Micromouse simulator and configure the algorithms.
+
 ## Documentation
 
-For detailed documentation, please refer to ... [update with link to final documentation]
-
-For final report, see [Rob-26-MazeSolver_report.md](docs/Rob-26-MazeSolver_report.md).
+- **[mms.md](docs/mms.md)** — Complete setup and usage guide for the MMS simulator integration
+- **[docs/Rob_26_proposal.md](docs/Rob_26_proposal.md)** — Original project proposal and objectives
+- **[docs/Rob-26-MazeSolver_report.md](docs/Rob-26-MazeSolver_report.md)** — Final project report with experimental results and analysis
 
 ## Citations
 
