@@ -38,7 +38,7 @@ open mms.app              # macOS
 ## Step 3: Configure an Algorithm
 
 1. In the MMS window, click the **`+`** button to add a new algorithm.
-   ![MMS gui](docs/res/mms_gui.png)
+   ![MMS gui](res/mms_gui.png)
 
 2. Fill in the **New Mouse Algorithm** dialog:
    - **Name**: Algorithm identifier (e.g., `flood_fill`, `wall_following`, `astar`)
@@ -68,13 +68,13 @@ Common flags:
 
 **Example configuration:**
 
-    ![New Mouse Algorithm dialog](docs/res/new_algorithm_dialog.png)
+   ![New Mouse Algorithm dialog](res/new_algorithm_dialog.png)
 
 ## Step 4: Select a Maze
 
 1. Click the **Maze** button in the MMS window.
 2. Navigate to `mazes` and select a maze file (`.txt` format).
-   ![maze selection dialog](docs/res/maze_selection.png)
+   ![maze selection dialog](res/maze_selection.png)
 
 ## Step 5: Run the Simulation
 
