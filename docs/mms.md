@@ -56,6 +56,14 @@ The run command instructs MMS how to invoke your algorithm. Use the template:
 
 Replace `[algorithm_name]` with the algorithm module name (e.g., `flood_fill`, `wall_following`, `astar`).
 
+> **Using conda instead of `.venv`?** The `.venv/bin/python` path above only applies to a `venv`-created environment. If you use conda, use the full path to your conda environment's Python interpreter instead:
+>
+> ```bash
+> /path/to/miniconda/base/envs/[env_name]/bin/python -m src.algorithms.[algorithm_name]
+> ```
+>
+> To find your exact interpreter path, activate your conda environment and run `which python`.
+
 **Optional flags:** You can pass command-line arguments defined in the algorithm's `argparse` configuration:
 
 ```bash
