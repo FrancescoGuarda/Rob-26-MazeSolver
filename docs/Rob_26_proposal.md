@@ -55,7 +55,7 @@ Per ogni simulazione, le metriche saranno raccolte in file di log in formato `js
 
 A partire dalla matrice delle visite sarà possibile generare **heatmap** dell'esplorazione del `maze` e **barplot** comparativi del numero totale di celle visitate per strategia. Verranno inoltre salvati i percorsi minimi individuati **offline** sia sulla mappa interna dell'agente sia sulla mappa completa del `maze`, per consentire un confronto qualitativo tra i due.
 
-In merito ai risultati attesi: si prevede che A* guidi l'agente verso percorsi di costo inferiore, ma che possa richiedere frequenti ricicli e ri-pianificazioni al momento della scoperta di nuovi muri, risultando potenzialmente meno efficiente in termini di numero di mosse rispetto al flood fill. Quest'ultimo, basandosi su una propagazione BFS dei valori di distanza aggiornati dinamicamente, tende a navigare in modo più diretto verso il goal, con minori revisioni del piano. Il wall-following risulterà la strategia più semplice e prevedibile, ma anche la meno efficace e la meno robusta, in particolare nei labirinti con isole. Chiaramente, i risultati dipenderanno dalla specifica configurazione del `maze` e dalle scelte implementative adottate.
+In merito ai risultati attesi: si prevede che A* guidi l'agente verso percorsi di costo inferiore, ma che possa richiedere frequenti ricicli e ri-pianificazioni al momento della scoperta di nuovi muri, risultando potenzialmente meno efficiente in termini di numero di mosse rispetto al flood fill. Quest'ultimo tende a navigare in modo più diretto verso il goal, con minori revisioni del piano. Il wall-following risulterà la strategia più semplice e prevedibile, ma anche la meno efficace e la meno robusta, in particolare nei labirinti con isole. Chiaramente, i risultati dipenderanno dalla specifica configurazione del `maze` e dalle scelte implementative adottate.
 
 ## 5. Suddivisione del lavoro
 
@@ -65,7 +65,7 @@ Il lavoro sarà organizzato in fasi sequenziali, con attività parallele nella f
 - **Fase 2 — Implementazione degli algoritmi** (suddivisa tra i membri):
   - membro A: algoritmo wall-following e modulo di gestione della mappa interna (`maze map`);
   - membro B: algoritmo flood fill;
-  - membro B: algoritmo A* (online) con euristica ammissibile (e.g., distanza di Manhattan).
+  - membro A/B: algoritmo A* (online) con euristica ammissibile (e.g., distanza di Manhattan).
 - **Fase 3 — Integrazione e logging** (tutti i membri): integrazione dei moduli, implementazione del sistema di logging delle metriche in formato `json`/`csv` e verifica del corretto funzionamento su labirinti semplici.
 - **Fase 4 — Valutazione sperimentale** (tutti i membri): esecuzione delle simulazioni sull'insieme di labirinti selezionati, raccolta dei dati e generazione delle visualizzazioni (heatmap, barplot, confronto percorsi minimi).
 - **Fase 5 — Analisi e stesura della relazione** (tutti i membri): analisi critica dei risultati, confronto tra le strategie rispetto alle metriche definite e redazione della relazione finale.
