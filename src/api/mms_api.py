@@ -1,3 +1,12 @@
+"""
+Mouse API for MacKorone Micromouse Simulator (MMS).
+Cloned from MacKorone [mms-python](https://github.com/mackorone/mms-python) repository; file: API.py
+
+This module provides a Python interface to interact with the MMS simulator.
+It allows algorithms to communicate with the simulator via stdin/stdout,
+issue commands, and handle responses.
+"""
+
 import sys
 
 class MouseCrashedError(Exception):

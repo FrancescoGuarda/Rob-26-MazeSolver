@@ -43,6 +43,7 @@ Follow the detailed setup instructions in [mms.md](docs/mms.md) to install the M
 **Setup and Usage:**
 - **[mms.md](docs/mms.md)** — Complete setup and usage guide for the MMS simulator integration
 - **[mazes/README.md](mazes/README.md)** — Maze file format specifications and difficulty levels
+- **[src/api/README.md](src/api/README.md)** — API interface documentation for `mms_api` and `sim_api`
 
 **Project Documentation:**
 - **[docs/Rob_26_proposal.md](docs/Rob_26_proposal.md)** — Original project proposal and objectives
