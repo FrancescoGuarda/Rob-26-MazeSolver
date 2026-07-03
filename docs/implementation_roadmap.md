@@ -4,12 +4,12 @@
 
 **Objective:** Establish a working development environment and verify end-to-end communication with the MMS simulator before writing any algorithm code.
 
-- [ ] Download and install the MMS simulator binary (or build from source) and verify it launches correctly
-- [ ] Clone the `mackorone/mms-python` template, configure it in MMS, and confirm that the left-wall-follower example runs successfully
-- [ ] Set up a Python virtual environment and requirements.txt with initial dependencies (`numpy`, `matplotlib`, `pytest`)
-- [ ] Scaffold the repository directory structure as defined in the *Repository Structure* section below
-- [ ] Download at least three candidate maze files from `tcp4me.com/mmr/mazes/` (`.maz` and `.num` formats) and inspect their structure manually
-- [ ] Document the MMS API contract (command names, expected responses, crash/reset behaviour) in notes.md
+- [X] Download and install the MMS simulator binary (or build from source) and verify it launches correctly
+- [X] Clone the `mackorone/mms-python` template, configure it in MMS, and confirm that the left-wall-follower example runs successfully
+- [X] Set up a Python virtual environment and requirements.txt with initial dependencies (`numpy`, `matplotlib`, `pytest`)
+- [X] Scaffold the repository directory structure as defined in the *Repository Structure* section below
+- [X] Download at least three candidate maze files from `tcp4me.com/mmr/mazes/` (`.maz` and `.num` formats) and inspect their structure manually
+- [X] Document the MMS API contract (command names, expected responses, crash/reset behaviour) in notes.md
 
 > **Milestone M1 — Environment verified:** MMS launches a Python algorithm, the algorithm reads sensor data, and moves the robot.
 
@@ -19,17 +19,32 @@
 
 **Objective:** Build the shared data structures and interfaces that all three algorithms will depend on, enabling independent development in Phase 3.
 
-- [ ] Define `constants.py`: cardinal direction enum, wall bitmask encoding (N=1, E=2, S=4, W=8, values 0–15), MMS color and text codes
-- [ ] Implement `MazeMap` in `maze_map.py`: 2-D wall matrix (R×C integers, 0 = unexplored) and 2-D visit-count matrix; methods to query/set walls for a cell and its neighbour, mark a visit, and export both matrices as nested lists
-- [ ] Implement `Robot` in `robot.py`: position (x, y) and heading; methods for turning left/right, moving forward (updating position), and computing absolute wall directions from relative sensor readings (`wallFront`, `wallLeft`, `wallRight`, `wallBack`)
-- [ ] Implement `MmsAPI` in `api/mms_api.py`: a thin, stateless wrapper around the MMS stdin/stdout protocol (mirrors `mackorone/mms-python/API.py`); all writes go to `sys.stdout`, all reads come from `sys.stdin`, all debug output goes to `sys.stderr`
-- [ ] Define `BaseAPI` abstract class in `api/base_api.py` specifying the API contract (`maze_width`, `maze_height`, `wall_front`, `wall_right`, `wall_left`, `wall_back`, `move_forward`, `turn_left`, `turn_right`, `set_wall`, `set_color`, `set_text`, `get_stat`, `was_reset`, `ack_reset`)
-- [ ] Implement `SimAPI` in `api/sim_api.py`: a headless implementation of `BaseAPI` backed by a loaded maze file; answers sensor queries by consulting the real maze structure, tracks robot position internally, and raises `Crash` on invalid moves — enabling fully automated batch testing without MMS
-- [ ] Implement `maze_loader.py` in `offline/`: parsers for both the `.maz` (ASCII map) and `.num` (coordinate + NESW flags) maze file formats; returns a uniform internal representation (R×C wall matrix)
-- [ ] Implement `MetricsLogger` in `metrics/logger.py`: accumulates moves, turns, distinct-cell count, total-visit count, and wall/visit matrices during a run; provides `export_json()` and `export_csv()` methods; writes output to `results/logs/`
-- [ ] Write unit tests for `MazeMap`, `Robot`, `maze_loader`, and `MetricsLogger`
+> See [`implementation.md`](../implementation.md) for the full implementation-ready detailed plan, all design decisions, and per-file specifications.
 
-> **Milestone M2 — Infrastructure ready:** A toy algorithm can instantiate `MazeMap` + `Robot`, call `SimAPI`, and produce a valid metrics log without MMS running.
+**Design decisions (resolved):**
+- Wall bitmask encoding: **N=1, E=2, S=4, W=8** (values 0–15); `mazes/README.md` updated accordingly
+- `mms_api.py`: keep module-level functions; add `MmsAPI(BaseAPI)` class that delegates to them (backward-compatible)
+- `algorithms/base.py`: left unchanged (test wall-follower); `BaseAlgorithm` abstract class will go in `algorithms/base_algorithm.py` in Phase 3d
+- `maze_parser.py` (ASCII only) placed under `src/parser/`; roadmap's `offline/maze_loader.py` (both formats) deferred to Phase 4
+- `MetricsLogger` primary export: JSON via `export_json()`
+
+**Checklist:**
+- [ ] `src/constants.py`: `Direction` enum (N=0,E=1,S=2,W=3), wall bitmask constants (N=1,E=2,S=4,W=8), `DIR_TO_WALL`, `DIR_TO_DELTA`, `OPPOSITE_DIR`, `DIR_TO_STR`, `COLORS`
+- [ ] `src/maze_map.py` — `MazeMap(width, height)`: `_walls[y][x]` and `_visits[y][x]` matrices; `set_wall`/`clear_wall` with symmetric neighbour update; `mark_visit`; `export_walls`/`export_visits`; `distinct_cells_visited`; `total_visits`
+- [ ] `src/robot.py` — `Robot(x, y, heading)`: `turn_right`/`turn_left`/`move_forward` (no wall check); `wall_front/right/left/back_dir()`; `reset()`
+- [ ] `src/api/base_api.py` — `BaseAPI(ABC)`: abstract methods for all protocol categories (maze info, wall sensing, movement, display, control, stats)
+- [ ] `src/api/mms_api.py` — add `MmsAPI(BaseAPI)` class delegating to existing module-level functions; add `get_stat` via `command(["getStat", stat])`
+- [ ] `src/api/sim_api.py` — `SimAPI(BaseAPI)`: headless simulator backed by `wall_matrix`; sensor queries via bitmask lookup; `MouseCrashedError` on blocked `move_forward`; display methods are no-ops
+- [ ] `src/parser/maze_parser.py` — `parse_maze(filepath) → (wall_matrix, width, height)`: ASCII `.txt` format; cell `(x,y)` maps to `lines[2*(H-1-y)][4*x]`; returns N=1,E=2,S=4,W=8 bitmasks
+- [ ] `src/metrics/logger.py` — `MetricsLogger(algo, maze)`: `start`/`log_move`/`log_turn`/`stop`/`set_matrices`; properties `total_moves`, `distinct_cells_visited`, `total_visits`, `execution_time`; `export_json(output_dir)`
+- [ ] Update `mazes/README.md`: encoding scheme and dictionary to N=1, E=2, S=4, W=8
+- [ ] Update `__init__.py` files: `src/api/`, `src/algorithms/`, new `src/parser/`, new `src/metrics/`
+- [ ] Create `results/logs/.gitkeep`
+- [ ] `tests/test_maze_map.py`: init, set/clear wall with symmetry, perimeter no-error, visit counts, export deep copy
+- [ ] `tests/test_robot.py`: turn cycles, move_forward all directions, wall_dir methods, reset
+- [ ] `tests/test_maze_parser.py`: dimensions, perimeter walls, known interior cell bitmask
+
+> **Milestone M2 — Infrastructure ready:** `python -m pytest tests/` passes all unit tests. A toy script can instantiate `MazeMap` + `Robot`, call `SimAPI` with a parsed maze, and produce a valid JSON log in `results/logs/` — without MMS running.
 
 ---
 
@@ -55,7 +70,7 @@
 - [ ] Test on level-2 and level-3 mazes via `SimAPI`; verify graceful handling of frequent re-planning on complex mazes
 
 ### 3d – Common base
-- [ ] Define `BaseAlgorithm` abstract class in `algorithms/base.py`: constructor takes a `BaseAPI` instance, a `MazeMap`, a `Robot`, a `MetricsLogger`, and goal coordinates; exposes a single `run()` method; handles the common sense-log-act loop and reset detection
+- [ ] Define `BaseAlgorithm` abstract class in `algorithms/base_algorithm.py` (note: `algorithms/base.py` is reserved for the Phase 1 test wall-follower): constructor takes a `BaseAPI` instance, a `MazeMap`, a `Robot`, a `MetricsLogger`, and goal coordinates; exposes a single `run()` method; handles the common sense-log-act loop and reset detection
 - [ ] Write integration tests that run each algorithm end-to-end on a small (4×4) handcrafted maze via `SimAPI` and assert goal-reached and log correctness
 
 > **Milestone M3 — All algorithms pass:** All three algorithms reach the goal on at least one maze per difficulty level using the headless `SimAPI`.
