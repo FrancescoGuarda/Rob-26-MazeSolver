@@ -97,31 +97,35 @@ Hereafter is reported the numerical dictionary corresponding to all possible con
 ### Encoding Scheme
 
 Each cell is encoded as an integer from **0 to 15**, representing the bitmask of walls around that cell:
-- **East (E)**: bit 0 
-- **North (N)**: bit 1 
-- **West (W)**: bit 2 
-- **South (S)**: bit 3 
+- **North (N)**: bit 0 → value **1**
+- **East (E)**: bit 1 → value **2**
+- **South (S)**: bit 2 → value **4**
+- **West (W)**: bit 3 → value **8**
+
+The decimal value of a cell's encoding is the **sum** of the bitmask values of its walls (e.g., a cell with North and West walls = 1 + 8 = 9). This is the standard additive bitmask encoding used in micromouse literature.
 
 ### Dictionary
 
-| Value | Walls (E, N, W, S) | Visual | Description |
-|-------|---------------------|--------|-----|
-| 0  | (1, 0, 0, 0) | <pre>╷  ·<br>╵  ·</pre> | East wall only |
-| 1  | (0, 1, 0, 0) | <pre>╶──╴<br>·  ·</pre> | North wall only |
-| 2  | (0, 0, 1, 0) | <pre>·  ╷<br>·  ╵</pre> | West wall only |
-| 3  | (0, 0, 0, 1) | <pre>·  ·<br>╶──╴</pre> | South wall only |
-| 4  | (1, 0, 0, 1) | <pre>╷  ·<br>└──╴</pre> | East + South |
-| 5  | (0, 0, 1, 1) | <pre>·  ╷<br>╶──┘</pre> | West + South |
-| 6  | (0, 1, 1, 0) | <pre>╶──┐<br>·  ╵</pre> | North + West |
-| 7  | (1, 1, 0, 0) | <pre>┌──╴<br>╵  ·</pre> | North + East |
-| 8  | (1, 0, 1, 0) | <pre>╷  ╷<br>╵  ╵</pre> | East + West |
-| 9  | (0, 1, 0, 1) | <pre>╶──╴<br>╶──╴</pre> | North + South |
-| 10 | (0, 1, 1, 1) | <pre>╶──┐<br>╶──┘</pre> | North + West + South |
-| 11 | (1, 0, 1, 1) | <pre>╷  ╷<br>└──┘</pre> | East + West + South |
-| 12 | (1, 1, 0, 1) | <pre>┌──╴<br>└──╴</pre> | North + East + South |
-| 13 | (1, 1, 1, 0) | <pre>┌──┐<br>╵  ╵</pre> | North + East + West |
-| 14 | (1, 1, 1, 1) | <pre>┌──┐<br>└──┘</pre> | All walls (full cell) |
-| 15 | (0, 0, 0, 0) | <pre>·  ·<br>·  ·</pre> | No walls (open cell) |
+( read binary from left to right: N, E, S, W; MSB to the left )
+
+| Value | N | E | S | W | View | Description |
+|-------|---|---|---|---|------|-------------|
+| 0  | 0 | 0 | 0 | 0 |<pre>·  ·<br>·  ·</pre>| No walls (open cell) |
+| 1  | 1 | 0 | 0 | 0 |<pre>╶──╴<br>·  ·</pre>|North only |
+| 2  | 0 | 1 | 0 | 0 |<pre>·  ╷<br>·  ╵</pre>|East only |
+| 3  | 1 | 1 | 0 | 0 |<pre>╶──┐<br>·  ╵</pre>|North + East |
+| 4  | 0 | 0 | 1 | 0 |<pre>·  ·<br>╶──╴</pre>|South only |
+| 5  | 1 | 0 | 1 | 0 |<pre>╶──╴<br>╶──╴</pre>|North + South |
+| 6  | 0 | 1 | 1 | 0 |<pre>·  ╷<br>╶──┘</pre>|East + South |
+| 7  | 1 | 1 | 1 | 0 |<pre>╶──┐<br>╶──┘</pre>|North + East + South |
+| 8  | 0 | 0 | 0 | 1 |<pre>╷  ·<br>╵  ·</pre>|West only |
+| 9  | 1 | 0 | 0 | 1 |<pre>┌──╴<br>╵  ·</pre>|North + West |
+| 10 | 0 | 1 | 0 | 1 |<pre>╷  ╷<br>╵  ╵</pre>|East + West |
+| 11 | 1 | 1 | 0 | 1 |<pre>┌──┐<br>╵  ╵</pre>|North + East + West |
+| 12 | 0 | 0 | 1 | 1 |<pre>╷  ·<br>└──╴</pre>|South + West |
+| 13 | 1 | 0 | 1 | 1 |<pre>┌──╴<br>└──╴</pre>|North + South + West |
+| 14 | 0 | 1 | 1 | 1 |<pre>╷  ╷<br>└──┘</pre>|East + South + West |
+| 15 | 1 | 1 | 1 | 1 |<pre>┌──┐<br>└──┘</pre>|All walls (full cell) |
 
 ### Usage in Code
 
