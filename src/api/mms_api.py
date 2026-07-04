@@ -123,3 +123,45 @@ def wasReset():
 
 def ackReset():
     command(args=["ackReset"], return_type=str)
+
+
+# ─── Class-based interface (implements BaseAPI) ───────────────────────────────
+
+from src.api.base_api import BaseAPI  # noqa: E402
+
+
+class MmsAPI(BaseAPI):
+    """BaseAPI implementation for the MMS GUI simulator.
+
+    Delegates every method to the corresponding module-level function in this
+    module. All I/O is via stdin/stdout as required by the MMS protocol.
+    """
+
+    def maze_width(self) -> int:            return mazeWidth()  # type: ignore[return-value]
+    def maze_height(self) -> int:           return mazeHeight()  # type: ignore[return-value]
+    def wall_front(self) -> bool:           return wallFront()  # type: ignore[return-value]
+    def wall_back(self) -> bool:            return wallBack()  # type: ignore[return-value]
+    def wall_left(self) -> bool:            return wallLeft()  # type: ignore[return-value]
+    def wall_right(self) -> bool:           return wallRight()  # type: ignore[return-value]
+    def move_forward(self) -> None:         moveForward()   # raises MouseCrashedError on crash
+    def turn_right(self) -> None:           turnRight()
+    def turn_left(self) -> None:            turnLeft()
+    def set_wall(self, x, y, direction):    setWall(x, y, direction)
+    def clear_wall(self, x, y, direction):  clearWall(x, y, direction)
+    def set_color(self, x, y, color):       setColor(x, y, color)
+    def clear_color(self, x, y):            clearColor(x, y)
+    def clear_all_color(self):              clearAllColor()
+    def set_text(self, x, y, text):         setText(x, y, text)
+    def clear_text(self, x, y):             clearText(x, y)
+    def clear_all_text(self):               clearAllText()
+    def was_reset(self) -> bool:            return wasReset()  # type: ignore[return-value]
+    def ack_reset(self) -> None:            ackReset()
+    def get_stat(self, stat: str):
+        raw = command(["getStat", stat], return_type=str)
+        try:
+            return int(raw)  # type: ignore[arg-type]
+        except (ValueError, TypeError):
+            try:
+                return float(raw)  # type: ignore[arg-type]
+            except (ValueError, TypeError):
+                return -1
