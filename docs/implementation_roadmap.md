@@ -29,20 +29,20 @@
 - `MetricsLogger` primary export: JSON via `export_json()`
 
 **Checklist:**
-- [ ] `src/constants.py`: `Direction` enum (N=0,E=1,S=2,W=3), wall bitmask constants (N=1,E=2,S=4,W=8), `DIR_TO_WALL`, `DIR_TO_DELTA`, `OPPOSITE_DIR`, `DIR_TO_STR`, `COLORS`
-- [ ] `src/maze_map.py` — `MazeMap(width, height)`: `_walls[y][x]` and `_visits[y][x]` matrices; `set_wall`/`clear_wall` with symmetric neighbour update; `mark_visit`; `export_walls`/`export_visits`; `distinct_cells_visited`; `total_visits`
-- [ ] `src/robot.py` — `Robot(x, y, heading)`: `turn_right`/`turn_left`/`move_forward` (no wall check); `wall_front/right/left/back_dir()`; `reset()`
-- [ ] `src/api/base_api.py` — `BaseAPI(ABC)`: abstract methods for all protocol categories (maze info, wall sensing, movement, display, control, stats)
-- [ ] `src/api/mms_api.py` — add `MmsAPI(BaseAPI)` class delegating to existing module-level functions; add `get_stat` via `command(["getStat", stat])`
-- [ ] `src/api/sim_api.py` — `SimAPI(BaseAPI)`: headless simulator backed by `wall_matrix`; sensor queries via bitmask lookup; `MouseCrashedError` on blocked `move_forward`; display methods are no-ops
-- [ ] `src/parser/maze_parser.py` — `parse_maze(filepath) → (wall_matrix, width, height)`: ASCII `.txt` format; cell `(x,y)` maps to `lines[2*(H-1-y)][4*x]`; returns N=1,E=2,S=4,W=8 bitmasks
-- [ ] `src/metrics/logger.py` — `MetricsLogger(algo, maze)`: `start`/`log_move`/`log_turn`/`stop`/`set_matrices`; properties `total_moves`, `distinct_cells_visited`, `total_visits`, `execution_time`; `export_json(output_dir)`
-- [ ] Update `mazes/README.md`: encoding scheme and dictionary to N=1, E=2, S=4, W=8
-- [ ] Update `__init__.py` files: `src/api/`, `src/algorithms/`, new `src/parser/`, new `src/metrics/`
-- [ ] Create `results/logs/.gitkeep`
-- [ ] `tests/test_maze_map.py`: init, set/clear wall with symmetry, perimeter no-error, visit counts, export deep copy
-- [ ] `tests/test_robot.py`: turn cycles, move_forward all directions, wall_dir methods, reset
-- [ ] `tests/test_maze_parser.py`: dimensions, perimeter walls, known interior cell bitmask
+- [X] `src/constants.py`: `Direction` enum (N=0,E=1,S=2,W=3), wall bitmask constants (N=1,E=2,S=4,W=8), `DIR_TO_WALL`, `DIR_TO_DELTA`, `OPPOSITE_DIR`, `DIR_TO_STR`, `COLORS`
+- [X] `src/maze_map.py` — `MazeMap(width, height)`: `_walls[y][x]` and `_visits[y][x]` matrices; `set_wall`/`clear_wall` with symmetric neighbour update; `mark_visit`; `export_walls`/`export_visits`; `distinct_cells_visited`; `total_visits`
+- [X] `src/robot.py` — `Robot(x, y, heading)`: `turn_right`/`turn_left`/`move_forward` (no wall check); `wall_front/right/left/back_dir()`; `reset()`
+- [X] `src/api/base_api.py` — `BaseAPI(ABC)`: abstract methods for all protocol categories (maze info, wall sensing, movement, display, control, stats)
+- [X] `src/api/mms_api.py` — add `MmsAPI(BaseAPI)` class delegating to existing module-level functions; add `get_stat` via `command(["getStat", stat])`
+- [X] `src/api/sim_api.py` — `SimAPI(BaseAPI)`: headless simulator backed by `wall_matrix`; sensor queries via bitmask lookup; `MouseCrashedError` on blocked `move_forward`; display methods are no-ops
+- [X] `src/parser/maze_parser.py` — `parse_maze(filepath) → (wall_matrix, width, height)`: ASCII `.txt` format; cell `(x,y)` maps to `lines[2*(H-1-y)][4*x]`; returns N=1,E=2,S=4,W=8 bitmasks
+- [X] `src/metrics/logger.py` — `MetricsLogger(algo, maze)`: `start`/`log_move`/`log_turn`/`stop`/`set_matrices`; properties `total_moves`, `distinct_cells_visited`, `total_visits`, `execution_time`; `export_json(output_dir)`
+- [X] Update `mazes/README.md`: encoding scheme and dictionary to N=1, E=2, S=4, W=8
+- [X] Update `__init__.py` files: `src/api/`, `src/algorithms/`, new `src/parser/`, new `src/metrics/`
+- [X] Create `results/logs/.gitkeep`
+- [X] `tests/test_maze_map.py`: init, set/clear wall with symmetry, perimeter no-error, visit counts, export deep copy
+- [X] `tests/test_robot.py`: turn cycles, move_forward all directions, wall_dir methods, reset
+- [X] `tests/test_maze_parser.py`: dimensions, perimeter walls, known interior cell bitmask
 
 > **Milestone M2 — Infrastructure ready:** `python -m pytest tests/` passes all unit tests. A toy script can instantiate `MazeMap` + `Robot`, call `SimAPI` with a parsed maze, and produce a valid JSON log in `results/logs/` — without MMS running.
 
