@@ -40,6 +40,7 @@ header-includes:
 \begin{flushleft}
 {\large\textbf{Docente del corso:}\par}
 {\large Prof. Enrico Scala\par}
+{\large Prof. Luigi Gargioni\par}
 \end{flushleft}
 \vspace{1cm}
 \begin{flushright}

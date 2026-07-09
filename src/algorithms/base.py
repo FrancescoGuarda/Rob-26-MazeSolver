@@ -2,6 +2,7 @@ import src.api.mms_api as mms_api
 import sys
 import matplotlib.pyplot as plt
 import numpy as np
+import time
 
 def log(string):
     sys.stderr.write("{}\n".format(string))
@@ -39,6 +40,7 @@ def main(logger=False):
     pos = 0 # 0: up, 1: right, 2: down, 3: left
     moves = 0
     while moves < 500 and (x, y) not in goals:
+        time.sleep(0.25)
         if not mms_api.wallLeft():
             mms_api.turnLeft()
             pos = (pos - 1) % 4
