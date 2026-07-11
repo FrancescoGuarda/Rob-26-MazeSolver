@@ -6,9 +6,9 @@ This directory contains the API layer that decouples the exploration algorithms 
 
 | Module | Status | Role |
 |--------|--------|------|
-| [`base_api.py`](#base_apipy--abstract-interface) | ○ planned | Abstract base class declaring the full API contract |
+| [`base_api.py`](#base_apipy--abstract-interface) | ✓ implemented | Abstract base class declaring the full API contract |
 | [`mms_api.py`](#mms_apipy--mms-gui-simulator) | ✓ implemented | Concrete implementation for the MMS GUI simulator via `stdin`/`stdout` |
-| [`sim_api.py`](#sim_apipy--headless-simulator) | ○ planned | Concrete implementation for headless batch testing backed by a loaded maze file |
+| [`sim_api.py`](#sim_apipy--headless-simulator) | ✓ implemented | Concrete implementation for headless batch testing backed by a loaded maze file |
 
 Each concrete implementation inherits from `base_api.py` and overrides every abstract method. Algorithm code imports only `BaseAPI` and receives whichever concrete instance is appropriate at runtime.
 
@@ -16,17 +16,22 @@ Each concrete implementation inherits from `base_api.py` and overrides every abs
 
 ## `base_api.py` — Abstract Interface
 
-> **Status:** TODO: planned
+> **Status:** ✓ implemented
 
-Will define the abstract base class `BaseAPI` using Python's `abc.ABC`, declaring all methods listed in the [API Reference](#api-reference) as `@abstractmethod`. No logic; no I/O. Its sole purpose is to enforce the interface contract so that any new backend (physical robot, alternative simulator, replay engine) can be added without touching algorithm code.
+Defines the abstract base class `BaseAPI` using Python's `abc.ABC`. All methods listed in the [API Reference](#api-reference) are declared as `@abstractmethod`. No logic; no I/O. Its sole purpose is to enforce the interface contract so that any new backend (physical robot, alternative simulator, replay engine) can be added without touching algorithm code.
 
 ---
 
 ## `mms_api.py` — MMS GUI Simulator
 
-> **Status:** implemented — adapted from [`mackorone/mms-python`](https://github.com/mackorone/mms-python) (`API.py`)
+> **Status:** ✓ implemented — adapted from [`mackorone/mms-python`](https://github.com/mackorone/mms-python) (`API.py`)
 
-Implements `BaseAPI` as a collection of module-level functions that communicate with the MMS simulator process via `stdin`/`stdout`. Each method serialises its command to `stdout` and, where a response is expected, reads and parses one line from `stdin`. Debug output must be directed to `stderr` to avoid corrupting the protocol stream.
+Provides two interfaces to the MMS protocol:
+
+1. **Module-level functions** (`mazeWidth()`, `wallFront()`, `moveForward()`, …) — original design, used by `src/algorithms/base.py` and fully backward-compatible.
+2. **`MmsAPI(BaseAPI)` class** — added in Phase 2; delegates every method to the corresponding module-level function. Algorithm code should use this class-based interface.
+
+All writes go to `sys.stdout`; all reads come from `sys.stdin`; debug output must go to `sys.stderr` to avoid corrupting the protocol stream.
 
 **Exception:** `MouseCrashedError` — raised by `moveForward` and `moveForwardHalf` when the simulator responds with `crash` (movement blocked by a wall or invalid distance).
 
@@ -34,9 +39,15 @@ Implements `BaseAPI` as a collection of module-level functions that communicate 
 
 ## `sim_api.py` — Headless Simulator
 
-> **Status:** TODO: planned
+> **Status:** ✓ implemented
 
-Will implement `BaseAPI` as a class backed by a maze file loaded via TODO: *`maze_loader.py`*. Sensor queries will be answered by consulting the ground-truth wall matrix; movement will update an internal robot state. `MouseCrashedError` will be raised on the same conditions as `mms_api.py`. This enables fully automated `pytest` test runs and batch evaluations without launching the MMS GUI.
+Implements `BaseAPI` as a class backed by a wall matrix loaded via [`src.parser.parse_maze()`](../parser/README.md). Sensor queries are answered by consulting the ground-truth wall matrix; movement updates an internal robot state. `MouseCrashedError` is raised on the same conditions as `mms_api.py`. Display methods (`set_color`, `set_text`, `set_wall`, …) are accepted as no-ops.
+
+This enables fully automated `pytest` test runs and batch evaluations without launching the MMS GUI.
+
+**Constructor:** `SimAPI(wall_matrix, width, height, start_x=0, start_y=0, start_heading=Direction.N)`
+
+**Additional read-only properties:** `position → (int, int)`, `heading → Direction`
 
 ---
 
@@ -101,7 +112,7 @@ These commands have visual effect only in the MMS GUI; `sim_api.py` will accept 
 
 ### Statistics
 
-> **Note:** `getStat` is part of the official MMS API but is not yet implemented in `mms_api.py`.
+> **Note:** `getStat` is implemented in `MmsAPI.get_stat(stat)` (class interface). It parses the simulator's string response and returns an `int` or `float`. `SimAPI.get_stat()` always returns -1.
 
 | Stat key | Type | Description |
 |----------|------|-------------|
