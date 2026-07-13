@@ -38,6 +38,9 @@ class MetricsLogger:
         self._end_time: float | None = None
         self._wall_matrix: list[list[int]] | None = None
         self._visit_matrix: list[list[int]] | None = None
+        # Replanning-event tracking (Phase 3 extension)
+        self._replanning_events: list[dict] = []
+        self._plan_timer_start: float | None = None
 
     # ------------------------------------------------------------------
     # Recording interface
@@ -67,6 +70,43 @@ class MetricsLogger:
         """Snapshot wall and visit matrices (use MazeMap.export_walls/visits)."""
         self._wall_matrix = wall_matrix
         self._visit_matrix = visit_matrix
+
+    def start_plan_timer(self) -> None:
+        """Record the start time of a planning / replanning call."""
+        self._plan_timer_start = time.monotonic()
+
+    def log_replanning_event(
+        self,
+        position: tuple[int, int],
+        nodes_expanded: int,
+        residual_distance: int | float,
+        memory_occupancy: int,
+    ) -> None:
+        """Append one replanning-event record.
+
+        Must be called after start_plan_timer() so that planning_time_s can be
+        computed.  cost_ratio is set to None when residual_distance == 0.
+        """
+        planning_time = (
+            time.monotonic() - self._plan_timer_start
+            if self._plan_timer_start is not None
+            else 0.0
+        )
+        cost_ratio: float | None = (
+            nodes_expanded / residual_distance
+            if residual_distance and residual_distance > 0
+            else None
+        )
+        self._replanning_events.append({
+            "event_id":          len(self._replanning_events),
+            "position":          list(position),
+            "planning_time_s":   planning_time,
+            "nodes_expanded":    nodes_expanded,
+            "residual_distance": int(residual_distance) if residual_distance != float('inf') else -1,
+            "cost_ratio":        cost_ratio,
+            "memory_occupancy":  memory_occupancy,
+        })
+        self._plan_timer_start = None  # reset timer
 
     # ------------------------------------------------------------------
     # Computed metrics (read-only properties)
@@ -109,6 +149,30 @@ class MetricsLogger:
         return self._end_time - self._start_time
 
     # ------------------------------------------------------------------
+    # Replanning-event metrics (Phase 3 extension)
+    # ------------------------------------------------------------------
+
+    @property
+    def replanning_events(self) -> list[dict]:
+        """Full list of per-replanning-event records."""
+        return list(self._replanning_events)
+
+    @property
+    def total_replanning_events(self) -> int:
+        """Number of replanning events recorded."""
+        return len(self._replanning_events)
+
+    @property
+    def cumulative_planning_time(self) -> float:
+        """Sum of planning_time_s over all replanning events (seconds)."""
+        return sum(e["planning_time_s"] for e in self._replanning_events)
+
+    @property
+    def cumulative_nodes_expanded(self) -> int:
+        """Sum of nodes_expanded over all replanning events."""
+        return sum(e["nodes_expanded"] for e in self._replanning_events)
+
+    # ------------------------------------------------------------------
     # Export
     # ------------------------------------------------------------------
 
@@ -137,6 +201,11 @@ class MetricsLogger:
             "execution_time_s": self.execution_time,
             "wall_matrix": self._wall_matrix,
             "visit_matrix": self._visit_matrix,
+            # Replanning-event fields (Phase 3 extension)
+            "total_replanning_events": self.total_replanning_events,
+            "cumulative_planning_time_s": self.cumulative_planning_time,
+            "cumulative_nodes_expanded": self.cumulative_nodes_expanded,
+            "replanning_events": self._replanning_events,
         }
 
         with open(filepath, 'w') as fh:
