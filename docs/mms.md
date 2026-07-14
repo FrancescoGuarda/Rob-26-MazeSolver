@@ -48,31 +48,27 @@ open mms.app              # macOS
 
 ### Run Command Format
 
-The run command instructs MMS how to invoke your algorithm. Use the template:
+The run command instructs MMS how to invoke `run.py`, the repository's MMS GUI entry point. Use the template:
 
 ```bash
-.venv/bin/python -m src.algorithms.[algorithm_name]
+.venv/bin/python run.py --algo [astar|dstar_lite] [--goal X Y ...] [--n-goals N] [--seed S]
 ```
 
-Replace `[algorithm_name]` with the algorithm module name (e.g., `flood_fill`, `wall_following`, `astar`).
+- `--algo`: the algorithm to run — `astar` or `dstar_lite` (required)
+- `--goal X Y`: a goal cell; repeat the flag for multiple goals (e.g. `--goal 3 3 --goal 0 3`). Mutually exclusive with `--n-goals`
+- `--n-goals N`: generate `N` random goal cells instead of an explicit `--goal` list
+- `--seed S`: random seed used together with `--n-goals`
+- If neither `--goal` nor `--n-goals` is given, the algorithm defaults to the maze's 4-cell centre area
 
 > **Using conda instead of `.venv`?** The `.venv/bin/python` path above only applies to a `venv`-created environment. If you use conda, use the full path to your conda environment's Python interpreter instead:
 >
 > ```bash
-> /path/to/miniconda/base/envs/[env_name]/bin/python -m src.algorithms.[algorithm_name]
+> /path/to/miniconda/base/envs/[env_name]/bin/python run.py --algo [astar|dstar_lite]
 > ```
 >
 > To find your exact interpreter path, activate your conda environment and run `which python`.
 
-**Optional flags:** You can pass command-line arguments defined in the algorithm's `argparse` configuration:
-
-```bash
-.venv/bin/python -m src.algorithms.flood_fill --log
-```
-
-Common flags:
-- `--log`: Enable logging of exploration metrics to `results/logs/`
-- `--verbose`: Print debug output to stderr during exploration
+On completion, `run.py` writes a JSON metrics log to `results/logs/` (the same schema produced by headless `SimAPI` runs via `experiments/run_batch.py`), so GUI and batch runs are directly comparable.
 
 **Example configuration:**
 
