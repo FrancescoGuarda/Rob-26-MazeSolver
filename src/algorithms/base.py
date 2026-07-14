@@ -4,6 +4,55 @@ import matplotlib.pyplot as plt
 import numpy as np
 import time
 
+import tkinter as tk
+from tkinter import ttk
+
+
+def show_color_legend():
+    """Display a small window explaining the meaning of each cell color."""
+
+    legend = [
+        ("Goal Area", "#008000"),          # G
+        ("Reached Goal", "#00FF00"),       # g
+        ("Visited once", "#0000FF"),       # b
+        ("Visited twice", "#00FFFF"),      # c
+        ("Visited three times", "#FFFF00"),# y
+        ("Visited four times", "#FFA500"), # o
+        ("Visited five times", "#FF0000"), # r
+        ("Visited >5 times", "#8B0000"),   # R
+    ]
+
+    root = tk.Tk()
+    root.title("Maze Color Legend")
+    root.resizable(False, False)
+
+    frame = ttk.Frame(root, padding=12)
+    frame.pack(fill="both", expand=True)
+
+    ttk.Label(
+        frame,
+        text="Cell Color Legend",
+        font=("Arial", 12, "bold")
+    ).pack(anchor="w", pady=(0, 10))
+
+    for text, color in legend:
+        row = ttk.Frame(frame)
+        row.pack(anchor="w", pady=2)
+
+        canvas = tk.Canvas(
+            row,
+            width=22,
+            height=22,
+            highlightthickness=1,
+            highlightbackground="black"
+        )
+        canvas.create_rectangle(0, 0, 22, 22, fill=color, outline=color)
+        canvas.pack(side="left")
+
+        ttk.Label(row, text=f"  {text}", font=("Arial", 10)).pack(side="left")
+
+    root.mainloop()
+
 def log(string):
     sys.stderr.write("{}\n".format(string))
     sys.stderr.flush()
@@ -14,7 +63,7 @@ def setOccurenceColor(x, y, count):
     elif count == 1:
         mms_api.setColor(x, y, "b")
     elif count == 2:
-        mms_api.setColor(x, y, "R")
+        mms_api.setColor(x, y, "c")
     elif count == 3:
         mms_api.setColor(x, y, "y")
     elif count == 4:
@@ -55,7 +104,7 @@ def main(logger=False):
     pos = 0 # 0: up, 1: right, 2: down, 3: left
     moves = 0
     while moves < 500 and (x, y) not in goals:
-        time.sleep(0.25)
+        #time.sleep(0.25)
         if not mms_api.wallLeft():
             mms_api.turnLeft()
             mms_api.setWall(x, y, getDirection(pos))
@@ -101,6 +150,9 @@ def main(logger=False):
     plt.scatter([7, 7, 8, 8], [7, 8, 7, 8], color='blue', s=100)
     plt.show()
 
+import multiprocessing
+
 # if passed as flag --logger, will log the mouse's position and orientation to stderr
 if __name__ == "__main__":
+    multiprocessing.Process(target=show_color_legend).start()
     main(logger="--logger" in sys.argv)
