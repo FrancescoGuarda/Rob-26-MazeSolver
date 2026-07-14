@@ -41,7 +41,7 @@ All goals initialised with rhs = 0.  When goal g_reached is reached:
 
 GUI (MMS simulator; all calls are no-ops in headless mode)
 -----------------------------------------------------------
-* Cell text: "g:X r:Y" format (e.g. "g:∞ r:0").
+* Cell text: "g-XXXr-YYY" format (e.g. "g-infr-000"; 10-char display budget).
 * Goal cells: 'G' until reached, 'g' on arrival.
 * Inconsistent nodes (in queue): 'R' (Dark Red).
 * Consistent nodes (processed / expanded): 'b' (Blue).
@@ -174,6 +174,7 @@ class DStarLiteExplorer(BaseAlgorithm):
         """Recompute rhs(u) = min over passable neighbours n of (1 + g(n))."""
         if u in self._remaining_goal_set:
             self._rhs[u] = 0.0
+            self._api.set_text(u[0], u[1], self._gui_cell_text(u[0], u[1]))
             return
         best = _INF
         ux, uy = u
@@ -188,6 +189,7 @@ class DStarLiteExplorer(BaseAlgorithm):
             if val < best:
                 best = val
         self._rhs[u] = best
+        self._api.set_text(u[0], u[1], self._gui_cell_text(u[0], u[1]))
 
     def _update_vertex(self, u: tuple[int, int]) -> None:
         """Maintain U: insert/update/remove u depending on consistency."""
@@ -196,13 +198,15 @@ class DStarLiteExplorer(BaseAlgorithm):
         elif u in self._U:
             self._U.remove(u)
 
+    @staticmethod
+    def _fmt3(value: float) -> str:
+        """Zero-pad to 3 chars, or 'inf' — fits the 'g-XXXr-YYY' 10-char budget."""
+        return "inf" if value == _INF else f"{int(value):03d}"
+
     def _gui_cell_text(self, x: int, y: int) -> str:
         g_val = self._g[(x, y)]
         r_val = self._rhs[(x, y)]
-        g_str = "∞" if g_val == _INF else str(int(g_val))
-        r_str = "∞" if r_val == _INF else str(int(r_val))
-        # MMS cell text max 10 chars; keep it short
-        return f"g:{g_str} r:{r_str}"[:10]
+        return f"g-{self._fmt3(g_val)}r-{self._fmt3(r_val)}"
 
     def _compute_shortest_path(self) -> int:
         """Run D*-Lite's ComputeShortestPath from the current s_start.
@@ -334,11 +338,9 @@ class DStarLiteExplorer(BaseAlgorithm):
         for y in range(self._height):
             for x in range(self._width):
                 s = (x, y)
+                api.set_text(x, y, self._gui_cell_text(x, y))
                 if s in self._remaining_goal_set:
-                    api.set_text(x, y, "g:∞ r:0")
                     api.set_color(x, y, 'G')
-                else:
-                    api.set_text(x, y, "g:∞ r:∞")
 
         # Sense start cell before initial plan
         maze_map.mark_visit(robot.x, robot.y)
@@ -393,6 +395,24 @@ class DStarLiteExplorer(BaseAlgorithm):
             self._move_to(best_next, robot, api, logger, maze_map)
             self._s_start = robot.position
 
+            # Reset handling: robot was sent back to the origin; the search
+            # state (g, rhs, U, km) is tied to the old s_start, so it must be
+            # rebuilt from scratch rather than repaired incrementally.
+            if self._check_reset(robot, api):
+                self._g = defaultdict(lambda: _INF)
+                self._rhs = defaultdict(lambda: _INF)
+                self._U = _DStarQueue()
+                self._km = 0.0
+                self._s_start = robot.position
+                s_last = robot.position
+                for g in self._remaining_goal_set:
+                    self._rhs[g] = 0.0
+                    self._U.insert(g, self._calc_key(g))
+                maze_map.mark_visit(robot.x, robot.y)
+                self._sense_and_update(maze_map, robot, api)
+                self._compute_shortest_path()
+                continue
+
             # Update km: h(s_last, s_current) = Manhattan = 1 per adjacent move
             self._km += abs(self._s_start[0] - s_last[0]) + abs(self._s_start[1] - s_last[1])
             s_last = self._s_start
@@ -409,6 +429,7 @@ class DStarLiteExplorer(BaseAlgorithm):
                 reached = robot.position
                 self._rhs[reached] = _INF
                 self._g[reached] = _INF
+                api.set_text(reached[0], reached[1], self._gui_cell_text(reached[0], reached[1]))
                 if reached in self._U:
                     self._U.remove(reached)
 

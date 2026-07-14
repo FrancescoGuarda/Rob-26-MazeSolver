@@ -105,6 +105,22 @@ class BaseAlgorithm(ABC):
     def _in_bounds(self, x: int, y: int) -> bool:
         return 0 <= x < self._width and 0 <= y < self._height
 
+    def _check_reset(self, robot: Robot, api: BaseAPI) -> bool:
+        """Poll the MMS reset button once; resync robot state if pressed.
+
+        The mouse's start cell is a fixed convention (maze origin, facing
+        North) shared identically by the real MMS mouse and ``SimAPI``, so
+        both ``ack_reset()`` (backend position tracking) and ``robot.reset()``
+        (algorithm-side position/heading tracking) take no arguments.
+        Returns True if a reset occurred, so callers know to discard any
+        in-progress plan/search state before continuing.
+        """
+        if not api.was_reset():
+            return False
+        api.ack_reset()
+        robot.reset()
+        return True
+
     def _sense_and_update(
         self,
         maze_map: MazeMap,
