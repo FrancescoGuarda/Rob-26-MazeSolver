@@ -83,9 +83,10 @@ On completion, `run.py` writes a JSON metrics log to `results/logs/` (the same s
 ## Step 5: Run the Simulation
 
 1. Click the **Run** button to start the simulation.
-2. Watch the robot explore the maze in real-time.
+2. Watch the robot explore the maze in real-time. A small **legend window** (Tkinter) also opens, mapping the on-screen cell colors and text (e.g. `f-XXXh-YYY`, `g-XXXr-YYY`) to their meaning for the selected algorithm.
 3. The **Stats** tab shows exploration metrics (distance, turns, effective distance, score).
-4. The simulation will end according to the algorithm's termination logic (e.g., reaching the goal, timeout, or max moves).
+4. Wall discoveries and replanning events are logged to **stderr** as they happen (`[WALL] …` / `[REPLAN] …`); stdout is reserved for the MMS protocol.
+5. The simulation will end according to the algorithm's termination logic (e.g., reaching the goal, timeout, or max moves).
 
 This runs all algorithms on all mazes and logs metrics to `results/logs/` without requiring MMS to be running.
 

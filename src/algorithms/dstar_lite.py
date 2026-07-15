@@ -39,14 +39,31 @@ All goals initialised with rhs = 0.  When goal g_reached is reached:
   rhs(g_reached) = g(g_reached) = ∞, neighbours updated, km adjusted,
   ComputeShortestPath re-run to route toward the next goal.
 
+Default goal
+------------
+When neither an explicit goal list nor a random-goal count is given, the goal
+is the maze's 4-cell centre *area* and the run terminates as soon as the first
+of those cells is reached (self._is_default_goal).
+
 GUI (MMS simulator; all calls are no-ops in headless mode)
 -----------------------------------------------------------
-* Cell text: "g-XXXr-YYY" format (e.g. "g-infr-000"; 10-char display budget).
-* Goal cells: 'G' until reached, 'g' on arrival.
+* Cell text: "g-XXXr-YYY" (10-char budget); collapses to bare "inf" for a
+  trivial (untouched) cell where g = rhs = ∞.
+* Goal cells: 'G' until reached, 'g' on arrival; reached goals are tracked and
+  redrawn on every replanning cycle so they survive clear_all_color().
 * Inconsistent nodes (in queue): 'R' (Dark Red).
-* Consistent nodes (processed / expanded): 'b' (Blue).
-* Trivial nodes (g=rhs=∞): clear color.
-* New walls: set_wall after each sensing step.
+* Cells expanded in the current cycle: 'b' (Blue); in earlier cycles: 'B'
+  (Dark Blue).
+* Planned and traversed paths: 'c' (Cyan).
+* Perimeter outline drawn once at startup; new walls via set_wall as sensed.
+* Each replanning cycle clears all colour and redraws the persistent state
+  (goals, reached goals, traversed path, earlier-cycle expansions) before the
+  new cycle paints its live 'b'/'R' colours on top.
+
+stderr diagnostics
+------------------
+Wall discoveries ('[WALL] ...') and replanning events ('[REPLAN] ...') are
+reported to stderr via _report_event (never stdout — the MMS protocol channel).
 """
 from __future__ import annotations
 
@@ -138,6 +155,17 @@ class _DStarQueue:
 class DStarLiteExplorer(BaseAlgorithm):
     """D*-Lite: incremental replanning explorer."""
 
+    LEGEND = [
+        ("b  (Blue)",       "Expanded in the current planning cycle"),
+        ("B  (Dark Blue)",  "Expanded in an earlier planning cycle"),
+        ("R  (Dark Red)",   "Inconsistent (in the priority queue)"),
+        ("c  (Cyan)",       "Planned path / traversed path"),
+        ("G  (Dark Green)", "Goal cell, not yet reached"),
+        ("g  (Green)",      "Goal cell, reached"),
+        ("g-XXXr-YYY",      "g-value and rhs-value of a cell"),
+        ("inf",             "Trivial cell: g = rhs = infinity"),
+    ]
+
     def __init__(
         self,
         api: BaseAPI,
@@ -157,6 +185,13 @@ class DStarLiteExplorer(BaseAlgorithm):
         self._km: float = 0.0
         self._s_start: tuple[int, int] = self._robot.position   # current robot pos
         self._remaining_goal_set: set[tuple[int, int]] = set()
+
+        # GUI persistent state redrawn after each clear_all_color() (see
+        # _gui_redraw_persistent_state): goals reached so far, cells expanded in
+        # earlier planning cycles, and cells expanded in the current cycle.
+        self._reached_goals: list[tuple[int, int]] = []
+        self._previously_expanded: set[tuple[int, int]] = set()
+        self._expanded_this_cycle: set[tuple[int, int]] = set()
 
     # ------------------------------------------------------------------
     # D*-Lite internals
@@ -200,13 +235,82 @@ class DStarLiteExplorer(BaseAlgorithm):
 
     @staticmethod
     def _fmt3(value: float) -> str:
-        """Zero-pad to 3 chars, or 'inf' — fits the 'g-XXXr-YYY' 10-char budget."""
-        return "inf" if value == _INF else f"{int(value):03d}"
+        """Left-justify into a 3-char slot, or 'inf' — fits 'g-XXXr-YYY' (10 chars).
+
+        3 characters is the correct budget: on a 16x16 maze a pathological
+        shortest path can exceed 100 cells, so 2 digits is not always enough.
+        """
+        text = "inf" if value == _INF else str(int(value))
+        return f"{text:<3}"
 
     def _gui_cell_text(self, x: int, y: int) -> str:
         g_val = self._g[(x, y)]
         r_val = self._rhs[(x, y)]
+        # Trivial (untouched) cell: collapse to a bare "inf" instead of
+        # "g-infr-inf" so the display isn't cluttered by unexplored cells.
+        if g_val == _INF and r_val == _INF:
+            return "inf"
         return f"g-{self._fmt3(g_val)}r-{self._fmt3(r_val)}"
+
+    def _reconstruct_planned_path(self) -> list[tuple[int, int]]:
+        """Greedy argmin-(1+g(n)) walk from s_start toward a goal, for display.
+
+        D*-Lite decides one step at a time from g rather than materialising a
+        full path object, so the planned path is reconstructed on demand.
+        Bounded by width*height and a visited set to guard against a cycle
+        produced by a transiently inconsistent state.
+        """
+        path: list[tuple[int, int]] = []
+        seen: set[tuple[int, int]] = set()
+        cur: tuple[int, int] | None = self._s_start
+        limit = self._width * self._height
+        while cur is not None and cur not in seen and len(path) < limit:
+            path.append(cur)
+            seen.add(cur)
+            if cur in self._remaining_goal_set:
+                break
+            cx, cy = cur
+            best_cost = _INF
+            nxt: tuple[int, int] | None = None
+            for direction in Direction:
+                if self._maze_map.has_wall(cx, cy, direction):
+                    continue
+                dx, dy = DIR_TO_DELTA[direction]
+                nx, ny = cx + dx, cy + dy
+                if not self._in_bounds(nx, ny):
+                    continue
+                cost = 1.0 + self._g[(nx, ny)]
+                if cost < best_cost:
+                    best_cost = cost
+                    nxt = (nx, ny)
+            if nxt is None or best_cost == _INF:
+                break
+            cur = nxt
+        return path
+
+    def _gui_redraw_persistent_state(self, maze_map: MazeMap, api: BaseAPI) -> None:
+        """Clear all colours and redraw the state that must survive a full clear.
+
+        None of these are recoverable from g/rhs alone once clear_all_color()
+        is introduced, so each is tracked explicitly. Draw order matters
+        (later wins on overlap): earlier-cycle expansions (dark blue) first,
+        then the planned and traversed paths (cyan), then goal markers last so
+        they always remain visually distinguishable. The current cycle's own
+        'b'/'R' colours are painted over this by _compute_shortest_path after
+        this call returns.
+        """
+        api.clear_all_color()
+        for bx, by in self._previously_expanded:
+            api.set_color(bx, by, 'B')
+        # Planned path (excluding the robot's current cell, path[0]).
+        for cx, cy in self._reconstruct_planned_path()[1:]:
+            api.set_color(cx, cy, 'c')
+        for cx, cy in self._traversed_cells(maze_map):
+            api.set_color(cx, cy, 'c')
+        for gx, gy in self._remaining_goal_set:
+            api.set_color(gx, gy, 'G')
+        for gx, gy in self._reached_goals:
+            api.set_color(gx, gy, 'g')
 
     def _compute_shortest_path(self) -> int:
         """Run D*-Lite's ComputeShortestPath from the current s_start.
@@ -214,6 +318,7 @@ class DStarLiteExplorer(BaseAlgorithm):
         Returns the number of non-stale state expansions (nodes_expanded metric).
         """
         nodes_expanded = 0
+        self._expanded_this_cycle = set()
 
         while True:
             top_key = self._U.top_key()
@@ -239,6 +344,7 @@ class DStarLiteExplorer(BaseAlgorithm):
                 self._U.pop()
                 self._g[u] = self._rhs[u]
                 nodes_expanded += 1
+                self._expanded_this_cycle.add(u)
 
                 self._api.set_color(u[0], u[1], 'b')   # GUI: consistent
                 self._api.set_text(u[0], u[1], self._gui_cell_text(u[0], u[1]))
@@ -257,6 +363,7 @@ class DStarLiteExplorer(BaseAlgorithm):
                     new_val = 1.0 + self._g[u]
                     if new_val < self._rhs[v]:
                         self._rhs[v] = new_val
+                        self._api.set_text(v[0], v[1], self._gui_cell_text(v[0], v[1]))
                         self._update_vertex(v)
                         if v in self._U:
                             self._api.set_color(v[0], v[1], 'R')  # GUI: inconsistent
@@ -267,6 +374,7 @@ class DStarLiteExplorer(BaseAlgorithm):
                 self._U.pop()
                 self._g[u] = _INF
                 nodes_expanded += 1
+                self._expanded_this_cycle.add(u)
 
                 self._api.set_text(u[0], u[1], self._gui_cell_text(u[0], u[1]))
 
@@ -277,7 +385,7 @@ class DStarLiteExplorer(BaseAlgorithm):
                     self._update_vertex(u)
                     if u in self._U:
                         self._api.set_color(ux, uy, 'R')
-                    elif self._g[u] == self._rhs[u] == _INF:
+                    elif self._g[u] == self._rhs[u] == _INF and u not in self._reached_goals:
                         self._api.clear_color(ux, uy)
 
                 # Update neighbours that used g(u)
@@ -296,7 +404,7 @@ class DStarLiteExplorer(BaseAlgorithm):
                     self._update_vertex(v)
                     if v in self._U:
                         self._api.set_color(v[0], v[1], 'R')
-                    elif self._g[v] == self._rhs[v] == _INF:
+                    elif self._g[v] == self._rhs[v] == _INF and v not in self._reached_goals:
                         self._api.clear_color(v[0], v[1])
 
         return nodes_expanded
@@ -320,6 +428,9 @@ class DStarLiteExplorer(BaseAlgorithm):
 
         logger.start()
 
+        # GUI: draw the maze perimeter before anything else (cosmetic).
+        self._display_maze_outline(api)
+
         # ---- Initialise D*-Lite ----
         self._g = defaultdict(lambda: _INF)
         self._rhs = defaultdict(lambda: _INF)
@@ -328,6 +439,9 @@ class DStarLiteExplorer(BaseAlgorithm):
         self._s_start = robot.position
         s_last = robot.position
         self._remaining_goal_set = set(self._goals)
+        self._reached_goals = []
+        self._previously_expanded = set()
+        self._expanded_this_cycle = set()
 
         # rhs = 0 for all goal cells; insert into U
         for g in self._remaining_goal_set:
@@ -361,9 +475,12 @@ class DStarLiteExplorer(BaseAlgorithm):
                     self._update_rhs(pos)
                     self._update_vertex(pos)
                 api.set_wall(robot.x, robot.y, DIR_TO_STR[direction])
+                self._report_event(f"[WALL] ({robot.x}, {robot.y}) {DIR_TO_STR[direction]}")
 
-        # Initial ComputeShortestPath
+        # Initial ComputeShortestPath (the "very first" call: no persistent-state
+        # redraw beforehand — the setup loop above already drew from a blank canvas).
         self._compute_shortest_path()
+        self._previously_expanded |= self._expanded_this_cycle
 
         # ---- Main navigation loop ----
         while self._remaining_goal_set:
@@ -405,12 +522,16 @@ class DStarLiteExplorer(BaseAlgorithm):
                 self._km = 0.0
                 self._s_start = robot.position
                 s_last = robot.position
+                # The old search's expansion history is discarded with it.
+                self._previously_expanded = set()
                 for g in self._remaining_goal_set:
                     self._rhs[g] = 0.0
                     self._U.insert(g, self._calc_key(g))
                 maze_map.mark_visit(robot.x, robot.y)
                 self._sense_and_update(maze_map, robot, api)
+                self._gui_redraw_persistent_state(maze_map, api)
                 self._compute_shortest_path()
+                self._previously_expanded |= self._expanded_this_cycle
                 continue
 
             # Update km: h(s_last, s_current) = Manhattan = 1 per adjacent move
@@ -421,6 +542,11 @@ class DStarLiteExplorer(BaseAlgorithm):
             if robot.position in self._remaining_goal_set:
                 self._remaining_goal_set.discard(robot.position)
                 api.set_color(robot.x, robot.y, 'g')
+                self._reached_goals.append(robot.position)
+
+                if self._is_default_goal:
+                    # Default goal is a single 4-cell *area*: stop at first reached.
+                    self._remaining_goal_set.clear()
 
                 if not self._remaining_goal_set:
                     break
@@ -449,7 +575,9 @@ class DStarLiteExplorer(BaseAlgorithm):
                         self._update_vertex(v)
 
                 # Replan to next goal (goal reaching is not a "replanning event")
+                self._gui_redraw_persistent_state(maze_map, api)
                 self._compute_shortest_path()
+                self._previously_expanded |= self._expanded_this_cycle
                 continue
 
             # ---- Sense walls ----
@@ -462,6 +590,9 @@ class DStarLiteExplorer(BaseAlgorithm):
                     if not is_new:
                         continue
                     api.set_wall(robot.x, robot.y, DIR_TO_STR[direction])
+                    self._report_event(
+                        f"[WALL] ({robot.x}, {robot.y}) {DIR_TO_STR[direction]}"
+                    )
                     dx, dy = DIR_TO_DELTA[direction]
                     nx, ny = robot.x + dx, robot.y + dy
                     # Both sides of the newly confirmed wall need rhs updates
@@ -478,13 +609,23 @@ class DStarLiteExplorer(BaseAlgorithm):
                 # ---- Replanning event (only when plan was actually modified) ----
                 # n_exp == 0 means ComputeShortestPath terminated immediately
                 # (s_start already consistent): no path change, no event to log.
+                self._gui_redraw_persistent_state(maze_map, api)
                 logger.start_plan_timer()
                 n_exp = self._compute_shortest_path()
+                self._previously_expanded |= self._expanded_this_cycle
                 if n_exp > 0:
                     h = self._compute_goal_heuristic(maze_map, list(self._remaining_goal_set))
                     residual = h.get(robot.position, 0)
                     memory = self._memory_occupancy()
                     logger.log_replanning_event(robot.position, n_exp, int(residual), memory)
+                    record = logger.replanning_events[-1]
+                    self._report_event(
+                        f"[REPLAN] pos=({record['position'][0]}, {record['position'][1]}) "
+                        f"expanded={record['nodes_expanded']} "
+                        f"residual={record['residual_distance']} "
+                        f"cost_ratio={record['cost_ratio']} "
+                        f"time_ms={record['planning_time_s'] * 1000:.2f}"
+                    )
 
         logger.stop()
         logger.set_matrices(maze_map.export_walls(), maze_map.export_visits())

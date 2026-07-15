@@ -18,12 +18,27 @@ When a goal cell is reached, it is removed from the remaining set.
 The BFS heuristic is recomputed over the updated goal set before the next
 planning call.  Greedy nearest-goal ordering emerges naturally from the BFS.
 
+Default goal
+------------
+When neither an explicit goal list nor a random-goal count is given, the goal
+is the maze's 4-cell centre *area* and the run terminates as soon as the first
+of those cells is reached (self._is_default_goal).
+
 GUI (MMS simulator, no-ops in headless mode)
 ---------------------------------------------
-* Goal cells: 'G' (Dark Green) until reached, 'g' (Green) on arrival.
-* Cell text: f-value of each expanded cell.  Cleared and redisplayed on
-  every replanning event.
-* New walls: displayed via set_wall after each sensing step.
+* Expanded cells: 'b' (Blue); open-list cells: 'R' (Dark Red); each labelled
+  with its f/h values ('f-XXXh-YYY').
+* Planned and traversed paths: 'c' (Cyan).
+* Goal cells: 'G' (Dark Green) until reached, 'g' (Green) on arrival; reached
+  goals are redrawn on every replan so they survive clear_all_color().
+* Perimeter outline drawn once at startup; new walls displayed via set_wall
+  after each sensing step.
+* Colours/text cleared and fully redrawn on every plan and replan.
+
+stderr diagnostics
+------------------
+Wall discoveries ('[WALL] ...') and replanning events ('[REPLAN] ...') are
+reported to stderr via _report_event (never stdout — the MMS protocol channel).
 """
 from __future__ import annotations
 
@@ -40,6 +55,16 @@ from src.robot import Robot
 class AStarExplorer(BaseAlgorithm):
     """Online A* explorer: replans from scratch on every wall discovery."""
 
+    LEGEND = [
+        ("b  (Blue)",      "Expanded (closed list)"),
+        ("R  (Dark Red)",  "Open list"),
+        ("c  (Cyan)",      "Planned path / traversed path"),
+        ("G  (Dark Green)", "Goal cell, not yet reached"),
+        ("g  (Green)",     "Goal cell, reached"),
+        ("f-XXX",          "f-value of an expanded/open cell"),
+        ("f-XXXh-YYY",     "f-value and h-value of an expanded/open cell"),
+    ]
+
     def __init__(
         self,
         api: BaseAPI,
@@ -51,6 +76,9 @@ class AStarExplorer(BaseAlgorithm):
         random_seed: int | None = None,
     ) -> None:
         super().__init__(api, maze_map, robot, logger, goals, n_random_goals, random_seed)
+        # Goals reached in earlier iterations of a multi-goal run; redrawn on
+        # every replan so their 'g' marker survives clear_all_color().
+        self._reached_goals: list[tuple[int, int]] = []
 
     # ------------------------------------------------------------------
     # Internal A* search
@@ -85,16 +113,18 @@ class AStarExplorer(BaseAlgorithm):
         g_score: dict[tuple[int, int], int | float] = {start: 0}
         came_from: dict[tuple[int, int], tuple[int, int]] = {}
 
-        # heap entries: (f, g, cell)
+        # heap entries: (f, h, cell) — h is the tie-break key (already computed
+        # to derive f), aligning exploration order with D*-Lite's k2 = min(g, rhs)
+        # tie-break. Admissibility (hence optimality) is tie-break-independent.
         open_heap: list[tuple[float | int, float | int, tuple[int, int]]] = [
-            (h.get(start, INF), 0, start)
+            (h.get(start, INF), h.get(start, INF), start)
         ]
         open_set: set[tuple[int, int]] = {start}
         closed_set: set[tuple[int, int]] = set()
         nodes_expanded = 0
 
         while open_heap:
-            f, g, current = heapq.heappop(open_heap)
+            f, _tie, current = heapq.heappop(open_heap)
 
             if current not in open_set:
                 continue  # stale heap entry
@@ -130,12 +160,13 @@ class AStarExplorer(BaseAlgorithm):
                 neighbour = (nx, ny)
                 if neighbour in closed_set:
                     continue
-                tentative_g: int | float = g + 1
+                tentative_g: int | float = g_score[current] + 1
                 if tentative_g < g_score.get(neighbour, INF):
                     came_from[neighbour] = current
                     g_score[neighbour] = tentative_g
-                    f_new = tentative_g + h.get(neighbour, INF)
-                    heapq.heappush(open_heap, (f_new, tentative_g, neighbour))
+                    h_neighbour = h.get(neighbour, INF)
+                    f_new = tentative_g + h_neighbour
+                    heapq.heappush(open_heap, (f_new, h_neighbour, neighbour))
                     open_set.add(neighbour)
 
         f_values = {c: g_score[c] + h.get(c, INF) for c in closed_set | open_set}
@@ -157,32 +188,63 @@ class AStarExplorer(BaseAlgorithm):
 
     @staticmethod
     def _format_f(value: int | float) -> str:
-        """Format an f-value for the 10-char cell-text budget: 'f-XXX' or 'f-inf'."""
-        if value == float('inf'):
-            return "f-inf"
-        return f"f-{int(value):03d}"
+        """Format an f-value into a 3-char left-justified slot: 'f-5  ', 'f-inf'.
+
+        3 characters is the correct budget: on a 16x16 maze a pathological
+        shortest path can exceed 100 cells, so 2 digits is not always enough.
+        """
+        text = "inf" if value == float('inf') else str(int(value))
+        return f"f-{text:<3}"
+
+    @staticmethod
+    def _format_fh(f_value: int | float, h_value: int | float) -> str:
+        """Format f- and h-values into two 3-char slots: 'f-XXXh-YYY' (10 chars)."""
+        f_text = "inf" if f_value == float('inf') else str(int(f_value))
+        h_text = "inf" if h_value == float('inf') else str(int(h_value))
+        return f"f-{f_text:<3}h-{h_text:<3}"
 
     def _gui_show_search(
         self,
         f_values: dict[tuple[int, int], int | float],
+        h_values: dict[tuple[int, int], int | float],
         open_set: set[tuple[int, int]],
         closed_set: set[tuple[int, int]],
         remaining_goals: list[tuple[int, int]],
+        reached_goals: list[tuple[int, int]],
+        path: list[tuple[int, int]],
+        maze_map: MazeMap,
         api: BaseAPI,
     ) -> None:
-        """Display live search progress: expanded cells (blue), open cells
-        (dark red), each with its f-value; goal markers are reapplied on top
-        since they were just wiped by clear_all_color()."""
+        """Display live search progress after a full clear.
+
+        Draw order (later wins on overlap): expanded cells (blue) and open
+        cells (dark red) with their f/h text first; then the planned and
+        traversed paths (cyan); then goal markers last, so goals remain
+        visually distinguishable — remaining goals dark green, previously
+        reached goals green (reapplied because clear_all_color() wiped them).
+        """
+        INF = float('inf')
         api.clear_all_color()
         api.clear_all_text()
         for cx, cy in closed_set:
             api.set_color(cx, cy, 'b')
-            api.set_text(cx, cy, self._format_f(f_values.get((cx, cy), float('inf'))))
+            api.set_text(cx, cy, self._format_fh(
+                f_values.get((cx, cy), INF), h_values.get((cx, cy), INF)))
         for cx, cy in open_set:
             api.set_color(cx, cy, 'R')
-            api.set_text(cx, cy, self._format_f(f_values.get((cx, cy), float('inf'))))
+            api.set_text(cx, cy, self._format_fh(
+                f_values.get((cx, cy), INF), h_values.get((cx, cy), INF)))
+        # Planned path (excluding the robot's current cell, path[0]).
+        for cx, cy in path[1:]:
+            api.set_color(cx, cy, 'c')
+        # Traversed path.
+        for cx, cy in self._traversed_cells(maze_map):
+            api.set_color(cx, cy, 'c')
+        # Goal markers drawn last so they win over cyan on goal cells.
         for gx, gy in remaining_goals:
             api.set_color(gx, gy, 'G')
+        for gx, gy in reached_goals:
+            api.set_color(gx, gy, 'g')
 
     # ------------------------------------------------------------------
     # Main loop
@@ -196,10 +258,18 @@ class AStarExplorer(BaseAlgorithm):
         logger = self._logger
 
         logger.start()
+
+        # GUI: draw the maze perimeter before anything else (cosmetic).
+        self._display_maze_outline(api)
+
         maze_map.mark_visit(robot.x, robot.y)
 
-        # Sense start cell before planning
-        self._sense_and_update(maze_map, robot, api)
+        # Sense start cell before planning; display and report any walls found.
+        initial_walls = self._sense_and_update(maze_map, robot, api)
+        for direction, is_new in initial_walls:
+            if is_new:
+                api.set_wall(robot.x, robot.y, DIR_TO_STR[direction])
+                self._report_event(f"[WALL] ({robot.x}, {robot.y}) {DIR_TO_STR[direction]}")
 
         remaining_goals = list(self._goals)
 
@@ -207,16 +277,21 @@ class AStarExplorer(BaseAlgorithm):
         for gx, gy in remaining_goals:
             api.set_color(gx, gy, 'G')
 
-        # GUI: initial state — empty text except the start cell's f = h(start)
+        # GUI: initial state — empty text except the start cell's f = h = h(start)
         h_init = self._compute_goal_heuristic(maze_map, remaining_goals)
         api.clear_all_text()
-        api.set_text(robot.x, robot.y, self._format_f(h_init.get(robot.position, float('inf'))))
+        h_start = h_init.get(robot.position, float('inf'))
+        api.set_text(robot.x, robot.y, self._format_fh(h_start, h_start))
 
         # Handle edge case: already at a goal
         goal_set = set(remaining_goals)
         while robot.position in goal_set:
             remaining_goals.remove(robot.position)
             api.set_color(robot.x, robot.y, 'g')
+            self._reached_goals.append(robot.position)
+            if self._is_default_goal:
+                # Default goal is a single 4-cell *area*: stop at the first reached.
+                remaining_goals.clear()
             goal_set = set(remaining_goals)
 
         while remaining_goals:
@@ -231,7 +306,10 @@ class AStarExplorer(BaseAlgorithm):
             if len(path) < 2:
                 break  # No path reachable (shouldn't happen with freespace assumption)
 
-            self._gui_show_search(f_values, open_set, closed_set, remaining_goals, api)
+            self._gui_show_search(
+                f_values, h, open_set, closed_set,
+                remaining_goals, self._reached_goals, path, maze_map, api,
+            )
 
             # Execute path step by step; path[0] = current position
             step_idx = 1
@@ -248,15 +326,21 @@ class AStarExplorer(BaseAlgorithm):
                     self._sense_and_update(maze_map, robot, api)
                     break  # replan in next outer iteration
 
-                # GUI: display newly confirmed walls
+                # GUI: display newly confirmed walls; report each to stderr
                 for direction, is_new in new_wall_events:
                     if is_new:
                         api.set_wall(robot.x, robot.y, DIR_TO_STR[direction])
+                        self._report_event(
+                            f"[WALL] ({robot.x}, {robot.y}) {DIR_TO_STR[direction]}"
+                        )
 
                 # Check: goal reached?
                 if robot.position in goal_set:
                     remaining_goals.remove(robot.position)
                     api.set_color(robot.x, robot.y, 'g')
+                    self._reached_goals.append(robot.position)
+                    if self._is_default_goal:
+                        remaining_goals.clear()
                     break  # replan in next outer iteration
 
                 # Check: do any new walls block the remaining path?
@@ -275,8 +359,17 @@ class AStarExplorer(BaseAlgorithm):
                         logger.log_replanning_event(
                             robot.position, n_exp, residual, memory
                         )
+                        record = logger.replanning_events[-1]
+                        self._report_event(
+                            f"[REPLAN] pos=({record['position'][0]}, {record['position'][1]}) "
+                            f"expanded={record['nodes_expanded']} "
+                            f"residual={record['residual_distance']} "
+                            f"cost_ratio={record['cost_ratio']} "
+                            f"time_ms={record['planning_time_s'] * 1000:.2f}"
+                        )
                         self._gui_show_search(
-                            f_values, open_set, closed_set, remaining_goals, api
+                            f_values, h_new, open_set, closed_set,
+                            remaining_goals, self._reached_goals, new_path, maze_map, api,
                         )
                         path = new_path
                         step_idx = 1

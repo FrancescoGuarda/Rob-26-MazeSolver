@@ -10,6 +10,7 @@ Provides shared infrastructure:
 from __future__ import annotations
 
 import random
+import sys
 from abc import ABC, abstractmethod
 from collections import deque
 
@@ -32,6 +33,10 @@ class BaseAlgorithm(ABC):
     Subclasses implement ``run()`` with the full planning/execution loop.
     """
 
+    # GUI legend: overridden per subclass; each entry is (symbol, meaning).
+    # Read off the class (not an instance) by run.py to build the legend window.
+    LEGEND: list[tuple[str, str]] = []
+
     def __init__(
         self,
         api: BaseAPI,
@@ -49,6 +54,12 @@ class BaseAlgorithm(ABC):
         self._start_pos: tuple[int, int] = robot.position
         self._width: int = api.maze_width()
         self._height: int = api.maze_height()
+        # True only when neither an explicit goal list nor a random-goal count
+        # was supplied, i.e. the default centre-area goal kicked in. Captured
+        # from which argument was given, not from the resolved coordinates, so
+        # an explicit list identical to the centre area is still treated as a
+        # real multi-goal request (see run() early-termination logic).
+        self._is_default_goal: bool = goals is None and n_random_goals is None
         self._goals: list[tuple[int, int]] = self._resolve_goals(
             goals, n_random_goals, random_seed
         )
@@ -104,6 +115,39 @@ class BaseAlgorithm(ABC):
 
     def _in_bounds(self, x: int, y: int) -> bool:
         return 0 <= x < self._width and 0 <= y < self._height
+
+    def _report_event(self, message: str) -> None:
+        """Print a diagnostic line to stderr.
+
+        stdout is reserved exclusively for the MMS stdin/stdout protocol, so
+        all human-readable diagnostics go to stderr (a no-op for the protocol
+        under both MmsAPI and SimAPI).
+        """
+        print(message, file=sys.stderr)
+
+    def _traversed_cells(self, maze_map: MazeMap) -> list[tuple[int, int]]:
+        """All cells the robot has visited at least once (per MazeMap)."""
+        return [
+            (x, y)
+            for y in range(maze_map.height)
+            for x in range(maze_map.width)
+            if maze_map.get_visit_count(x, y) > 0
+        ]
+
+    def _display_maze_outline(self, api: BaseAPI) -> None:
+        """Draw the maze's outer perimeter walls (cosmetic only).
+
+        This affects only what is drawn on screen before exploration starts;
+        MazeMap's own knowledge of the border is still built up by sensing,
+        unchanged. A no-op under SimAPI.
+        """
+        W, H = self._width, self._height
+        for x in range(W):
+            api.set_wall(x, 0, 's')
+            api.set_wall(x, H - 1, 'n')
+        for y in range(H):
+            api.set_wall(0, y, 'w')
+            api.set_wall(W - 1, y, 'e')
 
     def _check_reset(self, robot: Robot, api: BaseAPI) -> bool:
         """Poll the MMS reset button once; resync robot state if pressed.

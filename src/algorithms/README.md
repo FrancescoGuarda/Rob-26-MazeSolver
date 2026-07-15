@@ -55,6 +55,16 @@ BaseAlgorithm(
 | `_compute_start_heuristic(maze_map, start)` | BFS **forward** from `start`; used by D*-Lite at initialisation |
 | `_check_reset(robot, api)` | Polls `api.was_reset()` once; if pressed, calls `api.ack_reset()` + `robot.reset()` (both default to the maze's fixed origin `(0, 0)` facing North — the same hardcoded convention used by the real MMS mouse and mirrored exactly by `SimAPI`) and returns `True`. Subclasses call this once per loop iteration and, on `True`, discard their in-progress plan/search state and resume from the robot's restored position |
 | `_in_bounds(x, y)` | Bounds check against the maze's `(width, height)` |
+| `_report_event(message)` | Print a diagnostic line to **stderr** (never stdout — the MMS protocol channel). Used by both explorers for `[WALL] …` / `[REPLAN] …` reporting |
+| `_traversed_cells(maze_map)` | All cells with `maze_map.get_visit_count(x, y) > 0`; used to redraw the traversed path (cyan) in the GUI |
+| `_display_maze_outline(api)` | Draw the maze's outer perimeter walls once at startup (cosmetic; a no-op under `SimAPI`). Does not affect `MazeMap`'s own wall knowledge |
+
+**Other shared attributes:**
+
+| Name | Description |
+|------|-------------|
+| `LEGEND` (class attribute) | `list[(symbol, meaning)]`, empty on the base and overridden per subclass. Read off the **class** by `run.py` to build the GUI legend window |
+| `_is_default_goal` (instance) | `True` iff neither `goals` nor `n_random_goals` was passed. Gates the "stop at first centre cell" early-termination in each subclass's `run()` |
 
 ---
 
@@ -65,19 +75,22 @@ Online A* that **replans from scratch** every time a sensed wall invalidates the
 * **Heuristic:** before every plan/replan, `_compute_goal_heuristic` runs a multi-source BFS backward from the remaining goal set on the partial map. Admissible by construction (a partial map can only underestimate true distance), so A* is optimal on current knowledge.
 * **Search (`_a_star`)**: standard A* with a binary-heap open list and lazy stale-entry deletion. Returns `(path, nodes_expanded, f_values, open_set, closed_set)` — `f_values` maps every expanded/open cell to its f-value, and `open_set`/`closed_set` are the full cell sets (used both for the GUI display and as the `memory_occupancy` metric, `len(open_set) + len(closed_set)`).
 * **Replanning trigger:** after every move, `_sense_and_update` reports newly confirmed walls; if any lies on the remaining planned path (`_path_has_blocked_edge`), A* reruns from the current position and the event is logged via `MetricsLogger.log_replanning_event()`.
+* **Tie-breaking:** the open-list heap breaks f-value ties on `h` (already computed to derive `f`), aligning exploration order with D*-Lite's `k2 = min(g, rhs)`. Admissibility — hence optimality — is tie-break-independent.
 * **Multi-goal:** on reaching a goal cell it is dropped from the remaining set and the BFS heuristic is recomputed over what's left; nearest-goal ordering falls out of the BFS automatically.
+* **Default goal:** when the constructor is given neither an explicit `goals` list nor `n_random_goals` (`_is_default_goal` is `True`), the goal is the maze's 4-cell centre *area* and the run stops as soon as the **first** of those cells is reached. An explicit list — even one identical to the centre cells — is still treated as a real multi-goal request (all cells required).
 * **Reset handling:** checked once per step of the path-execution loop via `_check_reset`; on reset, the current path is abandoned and the outer loop replans from the robot's restored position.
 
 **GUI display** (no-ops under `SimAPI`), driven by `_gui_show_search`:
 
 | Cell state | Color | Text |
 |------------|-------|------|
-| Expanded (closed list) | `'b'` (Blue) | `f-XXX` / `f-inf` |
-| Open list | `'R'` (Dark Red) | `f-XXX` / `f-inf` |
+| Expanded (closed list) | `'b'` (Blue) | `f-XXXh-YYY` |
+| Open list | `'R'` (Dark Red) | `f-XXXh-YYY` |
+| Planned / traversed path | `'c'` (Cyan) | — |
 | Remaining goal | `'G'` (Dark Green) | — |
 | Reached goal | `'g'` (Green) | — |
 
-Colors/text are cleared (`clear_all_color()`/`clear_all_text()`) and fully redrawn on every plan and replan; new walls are shown via `set_wall` as they're sensed.
+Each value occupies a fixed 3-character slot (`f-42 `, `f-inf`), sized so 3-digit distances on a 16×16 maze still fit. Colors/text are cleared (`clear_all_color()`/`clear_all_text()`) and fully redrawn on every plan and replan; draw order is expanded/open → paths (cyan) → goals, so goal markers always win on overlap and previously-reached goals (`self._reached_goals`) survive the clear. New walls are shown via `set_wall` as they're sensed, including at the start cell. Wall discoveries and replanning events are also reported to **stderr** (`[WALL] …` / `[REPLAN] …`) via `_report_event`.
 
 ---
 
@@ -91,20 +104,23 @@ Incremental D*-Lite (Koenig & Likhachev, AAAI 2002): only the nodes made inconsi
 * **`_compute_shortest_path()`:** the core D*-Lite repair loop; processes over/under-consistent nodes until `s_start` is locally consistent and optimal. Returns the number of **non-stale** expansions (the `nodes_expanded` metric — stale-key re-insertions don't count).
 * **Replanning trigger:** on each newly confirmed wall, edge cost is set to `+inf` in both directions, `rhs` is recomputed for the affected cells (`_update_rhs`), and `_compute_shortest_path` repairs only the affected region. An event is logged only when `nodes_expanded > 0` (i.e. the plan actually changed).
 * **Multi-goal:** all goals start with `rhs = 0`; reaching one sets its `rhs`/`g` to `+inf`, repairs the neighbours that depended on it, bumps `km`, and reruns `ComputeShortestPath` toward the next goal (not counted as a replanning event).
-* **Reset handling:** checked once per navigation-loop iteration via `_check_reset`. On reset, the entire search state (`_g`, `_rhs`, `_U`, `_km`) is rebuilt from scratch at the restored start — D*-Lite's incremental repair is only valid relative to the `s_start` it was computed from, so a teleport back to the origin invalidates it outright rather than being a repairable edge-cost change.
+* **Default goal:** same rule as A* — with neither `goals` nor `n_random_goals` given (`_is_default_goal`), the 4-cell centre area is a single goal *area* and the run stops at the first centre cell reached.
+* **Reset handling:** checked once per navigation-loop iteration via `_check_reset`. On reset, the entire search state (`_g`, `_rhs`, `_U`, `_km`, and the `_previously_expanded` GUI history) is rebuilt from scratch at the restored start — D*-Lite's incremental repair is only valid relative to the `s_start` it was computed from, so a teleport back to the origin invalidates it outright rather than being a repairable edge-cost change.
 
 **GUI display** (no-ops under `SimAPI`):
 
 | Cell state | Color | Text |
 |------------|-------|------|
 | Inconsistent (in queue) | `'R'` (Dark Red) | |
-| Consistent / expanded | `'b'` (Blue) | |
-| Trivial (`g = rhs = ∞`) | cleared (`clear_color`) | |
+| Expanded this planning cycle | `'b'` (Blue) | |
+| Expanded in an earlier cycle | `'B'` (Dark Blue) | |
+| Planned / traversed path | `'c'` (Cyan) | |
+| Trivial (`g = rhs = ∞`) | cleared (`clear_color`) | `inf` |
 | Remaining goal | `'G'` (Dark Green) | |
 | Reached goal | `'g'` (Green) | |
 | Every cell, whenever `g` or `rhs` changes | — | `g-XXXr-YYY` (`_gui_cell_text`) |
 
-Unlike A*'s "redraw everything on replan" approach, D*-Lite's cell text is kept live: `_update_rhs` and every `g`/`rhs` mutation site in `_compute_shortest_path` (plus the goal-reached handler) call `set_text` directly, so displayed values never go stale between planning cycles. New walls are shown via `set_wall` as they're sensed.
+Cell text is kept live: `_update_rhs` and every `g`/`rhs` mutation site in `_compute_shortest_path` (plus the goal-reached handler) call `set_text` directly, so displayed values never go stale. A trivial cell (`g = rhs = ∞`) collapses to a bare `inf` instead of `g-infr-inf`. Each planning cycle first clears all colour and redraws the **persistent state** — goal markers, reached goals (`self._reached_goals`), the traversed path, and earlier-cycle expansions (`self._previously_expanded`, drawn `'B'`) — via `_gui_redraw_persistent_state`, then the current cycle paints its live `'b'`/`'R'` colours on top (the initial cycle skips the redraw, drawing from a blank canvas). The two `clear_color()` sites for trivial cells are guarded so a reached goal's green marker is never wiped. New walls are shown via `set_wall` as sensed; wall/replanning events are reported to **stderr** (`[WALL] …` / `[REPLAN] …`) via `_report_event`.
 
 ---
 
@@ -140,4 +156,4 @@ logger.export_json(output_dir="results/logs/")
 
 ## Testing
 
-`tests/test_integration.py` runs both explorers end-to-end via `SimAPI` on handcrafted mazes (open, single-blocked-path, multi-goal) and validates goal-reaching, log schema, and cross-algorithm replanning-count consistency. `tests/test_no_stray_print.py` statically guards `src/algorithms/*.py` (and `src/api/mms_api.py`) against stray `print()` calls, which would corrupt the MMS stdin/stdout protocol in a way invisible to `SimAPI`-based tests.
+`tests/test_integration.py` runs both explorers end-to-end via `SimAPI` on handcrafted mazes (open, single-blocked-path, multi-goal) and validates goal-reaching, log schema, and cross-algorithm replanning-count consistency. `tests/test_no_stray_print.py` statically guards `src/algorithms/*.py` (and `src/api/mms_api.py`) against stray writes to **stdout**, which would corrupt the MMS stdin/stdout protocol in a way invisible to `SimAPI`-based tests. `print(..., file=sys.stderr)` is explicitly allowed (that is the intended diagnostic channel for `_report_event`); any other `print(...)` is rejected.

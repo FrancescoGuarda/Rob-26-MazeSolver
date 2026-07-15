@@ -1,8 +1,13 @@
-"""Guard: no stray print()/stdout writes in MMS-protocol-critical modules.
+"""Guard: no stray stdout writes in MMS-protocol-critical modules.
 
-MMS communicates over raw stdin/stdout; a stray print() would desync the
-protocol. This bug class is invisible to SimAPI-based tests (which never
+MMS communicates over raw stdin/stdout; a stray print() to stdout would desync
+the protocol. This bug class is invisible to SimAPI-based tests (which never
 touch real stdin/stdout) and only surfaces when running in the real MMS GUI.
+
+``print(..., file=sys.stderr)`` is explicitly allowed: stderr is the intended
+channel for diagnostics (wall/replanning events reported by the algorithms),
+and it never touches the protocol stream. Everything else -- a bare
+``print(...)`` or ``print(..., file=sys.stdout)`` -- is still forbidden.
 """
 from __future__ import annotations
 
@@ -18,6 +23,19 @@ _GUARDED_FILES = [
 ]
 
 
+def _is_stderr_only(node: ast.Call) -> bool:
+    """True iff *node* is a ``print(..., file=sys.stderr)`` call."""
+    for kw in node.keywords:
+        if kw.arg == "file":
+            return (
+                isinstance(kw.value, ast.Attribute)
+                and kw.value.attr == "stderr"
+                and isinstance(kw.value.value, ast.Name)
+                and kw.value.value.id == "sys"
+            )
+    return False  # no file= kwarg -> defaults to stdout -> still forbidden
+
+
 def _find_print_calls(source: str) -> list[int]:
     tree = ast.parse(source)
     lines: list[int] = []
@@ -26,6 +44,7 @@ def _find_print_calls(source: str) -> list[int]:
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Name)
             and node.func.id == "print"
+            and not _is_stderr_only(node)
         ):
             lines.append(node.lineno)
     return lines
