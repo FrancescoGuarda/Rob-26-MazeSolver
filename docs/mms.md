@@ -51,7 +51,7 @@ open mms.app              # macOS
 The run command instructs MMS how to invoke `run.py`, the repository's MMS GUI entry point. Use the template:
 
 ```bash
-.venv/bin/python run.py --algo [astar|dstar_lite] [--goal X Y ...] [--n-goals N] [--seed S]
+.venv/bin/python run.py --algo [astar|dstar_lite] [--goal X Y ...] [--n-goals N] [--seed S] [--heuristic min_path|manhattan] [--output-dir DIR] [--no-log]
 ```
 
 - `--algo`: the algorithm to run — `astar` or `dstar_lite` (required)
@@ -59,6 +59,9 @@ The run command instructs MMS how to invoke `run.py`, the repository's MMS GUI e
 - `--n-goals N`: generate `N` random goal cells instead of an explicit `--goal` list
 - `--seed S`: random seed used together with `--n-goals`
 - If neither `--goal` nor `--n-goals` is given, the algorithm defaults to the maze's 4-cell centre area
+- `--heuristic min_path|manhattan`: planning heuristic, default `min_path` (wall-aware shortest-known-distance). `manhattan` uses straight-line distance instead, ignoring wall knowledge. Only affects `--algo astar`; `dstar_lite` always uses its own Manhattan-to-current-position heuristic regardless of this flag
+- `--output-dir DIR`: directory for the exported JSON log, default `results/logs/`
+- `--no-log`: skip writing the JSON metrics log entirely (stderr diagnostics are unaffected); useful to avoid filling `results/logs/` during debugging/testing runs
 
 > **Using conda instead of `.venv`?** The `.venv/bin/python` path above only applies to a `venv`-created environment. If you use conda, use the full path to your conda environment's Python interpreter instead:
 >
@@ -68,7 +71,7 @@ The run command instructs MMS how to invoke `run.py`, the repository's MMS GUI e
 >
 > To find your exact interpreter path, activate your conda environment and run `which python`.
 
-On completion, `run.py` writes a JSON metrics log to `results/logs/` (the same schema produced by headless `SimAPI` runs via `experiments/run_batch.py`), so GUI and batch runs are directly comparable.
+On completion, `run.py` writes a JSON metrics log to `results/logs/` (the same schema produced by headless `SimAPI` runs via `experiments/run_batch.py`), so GUI and batch runs are directly comparable — unless `--no-log` was passed, in which case no file is written and `--output-dir` is ignored.
 
 **Example configuration:**
 
@@ -83,10 +86,10 @@ On completion, `run.py` writes a JSON metrics log to `results/logs/` (the same s
 ## Step 5: Run the Simulation
 
 1. Click the **Run** button to start the simulation.
-2. Watch the robot explore the maze in real-time. A small **legend window** (Tkinter) also opens, mapping the on-screen cell colors and text (e.g. `f-XXXh-YYY`, `g-XXXr-YYY`) to their meaning for the selected algorithm.
+2. Watch the robot explore the maze in real-time. A small **legend window** (Tkinter, with a color swatch next to each entry) also opens in its own process, mapping the on-screen cell colors and text (e.g. `f-XXXh-YYY`, `g-XXXr-YYY`) to their meaning for the selected algorithm. Starting a new run automatically closes a legend window left open from a previous run, so they don't stack up.
 3. The **Stats** tab shows exploration metrics (distance, turns, effective distance, score).
-4. Wall discoveries and replanning events are logged to **stderr** as they happen (`[WALL] …` / `[REPLAN] …`); stdout is reserved for the MMS protocol.
-5. The simulation will end according to the algorithm's termination logic (e.g., reaching the goal, timeout, or max moves).
+4. Wall discoveries and replanning events are logged to **stderr** as they happen — one consolidated `[WALL] (x, y) n e s w` line per sensing event (`_` marks an absent wall), and `[REPLAN] ...` lines with `cost_ratio`/`time_ms` rounded to 2 decimals; stdout is reserved for the MMS protocol.
+5. The simulation ends once the algorithm's goal condition is satisfied (or, for the default centre-area goal, as soon as the first of its 4 cells is reached). At that point the GUI clears all non-goal decoration and leaves only goal cells marked: reached goals in green (`g`), labelled with their 1-based reach order for a true multi-goal run; unreached default-centre-area cells stay dark green (`G`).
 
 This runs all algorithms on all mazes and logs metrics to `results/logs/` without requiring MMS to be running.
 

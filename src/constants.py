@@ -78,3 +78,16 @@ COLORS: dict[str, str] = {
     'R': 'Dark Red',
     'Y': 'Dark Yellow',
 }
+
+# MMS cell color: character → hex swatch, for the GUI legend window.
+# One entry per COLORS key (15 total).
+COLOR_HEX: dict[str, str] = {
+    'k': '#000000', 'w': '#FFFFFF',
+    'b': '#0000BB', 'B': '#000036',
+    'a': '#B3B3B3', 'A': '#1A1A1A',
+    'c': '#006867', 'C': '#003434',
+    'g': '#00B600', 'G': '#004F00',
+    'o': '#BF6100',
+    'r': '#DF0000', 'R': '#550000',
+    'y': '#B3B300', 'Y': '#333300',
+}

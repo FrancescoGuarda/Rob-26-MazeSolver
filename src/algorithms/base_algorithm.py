@@ -46,6 +46,7 @@ class BaseAlgorithm(ABC):
         goals: list[tuple[int, int]] | None = None,
         n_random_goals: int | None = None,
         random_seed: int | None = None,
+        heuristic: str = "min_path",
     ) -> None:
         self._api = api
         self._maze_map = maze_map
@@ -54,6 +55,12 @@ class BaseAlgorithm(ABC):
         self._start_pos: tuple[int, int] = robot.position
         self._width: int = api.maze_width()
         self._height: int = api.maze_height()
+        # "min_path" (default): wall-aware BFS distance, via _compute_goal_heuristic.
+        # "manhattan": straight-line distance, via _compute_heuristic. Currently only
+        # consulted by AStarExplorer — DStarLiteExplorer always uses its own
+        # Manhattan-to-s_start heuristic regardless of this value (see _h() in
+        # dstar_lite.py; a different mathematical role, tied to its Key/km invariant).
+        self._heuristic: str = heuristic
         # True only when neither an explicit goal list nor a random-goal count
         # was supplied, i.e. the default centre-area goal kicked in. Captured
         # from which argument was given, not from the resolved coordinates, so
@@ -63,6 +70,11 @@ class BaseAlgorithm(ABC):
         self._goals: list[tuple[int, int]] = self._resolve_goals(
             goals, n_random_goals, random_seed
         )
+        # Goals reached so far in the current run, in reach order. Consulted
+        # by _gui_show_termination and by both subclasses' own live-display
+        # goal-color-persistence logic (redrawn on every replan so 'g'
+        # markers survive clear_all_color()).
+        self._reached_goals: list[tuple[int, int]] = []
 
     # ------------------------------------------------------------------
     # Abstract interface
@@ -125,14 +137,66 @@ class BaseAlgorithm(ABC):
         """
         print(message, file=sys.stderr)
 
-    def _traversed_cells(self, maze_map: MazeMap) -> list[tuple[int, int]]:
-        """All cells the robot has visited at least once (per MazeMap)."""
-        return [
-            (x, y)
-            for y in range(maze_map.height)
-            for x in range(maze_map.width)
-            if maze_map.get_visit_count(x, y) > 0
+    def _report_walls(self, maze_map: MazeMap, x: int, y: int) -> None:
+        """One consolidated stderr line for all four walls at (x, y).
+
+        Reports the cell's complete now-known wall status (not just this
+        sensing pass's deltas), in Direction's canonical N, E, S, W order,
+        with '_' marking an absent wall. Callers must gate this on "at least
+        one new wall found this pass" themselves, so verbosity actually drops
+        relative to the old one-line-per-wall format.
+        """
+        parts = [
+            DIR_TO_STR[direction] if maze_map.has_wall(x, y, direction) else '_'
+            for direction in Direction
         ]
+        self._report_event(f"[WALL] ({x}, {y}) {' '.join(parts)}")
+
+    def _report_replan(self, record: dict) -> None:
+        """One stderr line for a replanning-event record (see MetricsLogger).
+
+        cost_ratio and time_ms are rounded to 2 decimals; cost_ratio is
+        printed as the literal string 'None' when the logger recorded it as
+        None (residual_distance == 0).
+        """
+        cost_ratio = record['cost_ratio']
+        cost_ratio_str = f"{cost_ratio:.2f}" if cost_ratio is not None else "None"
+        self._report_event(
+            f"[REPLAN] pos=({record['position'][0]}, {record['position'][1]}) "
+            f"expanded={record['nodes_expanded']} "
+            f"residual={record['residual_distance']} "
+            f"cost_ratio={cost_ratio_str} "
+            f"time_ms={record['planning_time_s'] * 1000:.2f}"
+        )
+
+    def _gui_show_termination(self, api: BaseAPI) -> None:
+        """Final GUI frame: clear all non-goal decoration, mark goal cells only.
+
+        Called once, unconditionally, at the end of run() in both explorers
+        (regardless of whether the loop exited because the goal condition was
+        satisfied or because it got stuck — the maze corpus used by this
+        project is verified solvable by both algorithms, so the stuck path is
+        not expected to execute in practice).
+
+        Reached goals show 'g' (Green); in a true multi-goal run (an explicit
+        goals/n_random_goals request of >= 2 cells) they're additionally
+        labelled with their 1-based reach order. The default centre-area case
+        is not a multi-goal run for this purpose — only one of its 4 cells is
+        ever reached by design — so its unreached cells stay 'G' (Dark Green)
+        and no order text is shown for the one reached cell either.
+        """
+        api.clear_all_color()
+        api.clear_all_text()
+        multi_goal = not self._is_default_goal and len(self._goals) >= 2
+        for i, (gx, gy) in enumerate(self._reached_goals, start=1):
+            api.set_color(gx, gy, 'g')
+            if multi_goal:
+                api.set_text(gx, gy, str(i))
+        if self._is_default_goal:
+            reached = set(self._reached_goals)
+            for gx, gy in self._goals:
+                if (gx, gy) not in reached:
+                    api.set_color(gx, gy, 'G')
 
     def _display_maze_outline(self, api: BaseAPI) -> None:
         """Draw the maze's outer perimeter walls (cosmetic only).
@@ -271,6 +335,28 @@ class BaseAlgorithm(ABC):
 
         return h
 
+    def _compute_heuristic(
+        self,
+        maze_map: MazeMap,
+        goals: list[tuple[int, int]],
+    ) -> dict[tuple[int, int], int | float]:
+        """Dispatch on self._heuristic for the goal-directed planning heuristic.
+
+        ``"min_path"`` (default): wall-aware BFS backward from *goals*, i.e.
+        ``_compute_goal_heuristic``. ``"manhattan"``: straight-line ``|dx|+|dy|``
+        distance to the nearest goal, ignoring wall knowledge entirely.
+        """
+        if self._heuristic == "manhattan":
+            return {
+                (x, y): min(
+                    (abs(x - gx) + abs(y - gy) for gx, gy in goals),
+                    default=float('inf'),
+                )
+                for y in range(maze_map.height)
+                for x in range(maze_map.width)
+            }
+        return self._compute_goal_heuristic(maze_map, goals)
+
     def _compute_start_heuristic(
         self,
         maze_map: MazeMap,
@@ -279,7 +365,8 @@ class BaseAlgorithm(ABC):
         """BFS forward from *start* on the current partial map.
 
         Returns ``h[cell]`` = BFS distance from ``cell`` to ``start``.
-        Used by D*-Lite at initialisation (km adjustment handles robot movement).
+        Currently unused: DStarLiteExplorer computes its own Manhattan-distance
+        heuristic inline (``_h()`` in dstar_lite.py) rather than calling this.
         On an empty map (all cells free) this equals Manhattan distance.
         """
         INF: float = float('inf')
