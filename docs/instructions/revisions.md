@@ -1,175 +1,373 @@
-# Revisions
+# Revisions — Implementation Blueprint
 
-This document records a second round of remarks, gathered from further manual MMS-GUI testing of `AStarExplorer` and `DStarLiteExplorer`, on top of the behavior already delivered by `algorithms_gui_revision.md` (that blueprint is now fully implemented in `src/algorithms/base_algorithm.py`, `src/algorithms/astar.py`, and `src/algorithms/dstar_lite.py`). Each remark below has been checked against the current implementation and against `algorithms_gui_revision.md` where relevant, and annotated with the concrete file/function it targets, the precise gap it closes, and any ambiguity that still needs a decision.
+This is the implementation-ready specification for the second round of remarks gathered from manual MMS-GUI testing of `AStarExplorer` and `DStarLiteExplorer`, building on top of `algorithms_gui_revision.md` (fully implemented) and reviewed against the current codebase (`src/algorithms/base_algorithm.py`, `src/algorithms/astar.py`, `src/algorithms/dstar_lite.py`, `src/api/base_api.py`, `src/api/sim_api.py`, `src/constants.py`, `src/metrics/logger.py`, `run.py`, `docs/mms.md`, `src/algorithms/README.md`). Every item settles on one concrete design (file, method, call site) and states the reasoning behind it; the one item left genuinely open (§A.1's D*-Lite scope) is flagged explicitly rather than guessed at, since resolving it requires re-verifying D*-Lite's incremental-correctness proof, not just reading the current code.
 
-As with its predecessor, this file is a **requirements** document, not yet an implementation blueprint: it records *what* should change and *why*, cross-checked for accuracy, but intentionally leaves *how* (data structures, call sites, exact code) to a later pass. Where an item's current wording admits more than one reasonable implementation, that is flagged as an open question rather than resolved here.
-
-It is organized into two parts: **Operative** (CLI flags and stderr/log behavior in `run.py` and the two explorers) and **GUI** (MMS display behavior).
+Organized into **A. Operative** (CLI flags, stderr diagnostics) and **B. GUI** (MMS display). Read §B.2 before §B.3 — the D*-Lite `gui_show_search` rewrite in §B.3 subsumes §B.2's D*-Lite half.
 
 ---
 
-## Operative
+## A. Operative changes
 
-### 1. Heuristic-selection flag (`--heuristic`)
+### A.1 `--heuristic` flag (`min_path` | `manhattan`)
 
-Extend `BaseAlgorithm` (`src/algorithms/base_algorithm.py`) so the heuristic used during planning is selectable, and expose the choice as an optional `run.py` flag:
+**Files:** `src/algorithms/base_algorithm.py`, `src/algorithms/astar.py`, `run.py`, `docs/mms.md`, `src/algorithms/README.md`.
 
+**Current state:**
+- `AStarExplorer` uses `BaseAlgorithm._compute_goal_heuristic(maze_map, goals)` exclusively as its planning heuristic (`astar.py:281,301,353`) — a multi-source BFS *backward* from the goal set, wall-aware (respects confirmed walls; freespace assumption elsewhere). This is what `min_path` refers to.
+- `DStarLiteExplorer` computes its own heuristic inline via `_h(s)` (`dstar_lite.py:200-202`): a hardcoded Manhattan distance from `s` to `self._s_start`, ignoring walls entirely. It also calls `_compute_goal_heuristic` once (`dstar_lite.py:617`), but only to derive the `residual_distance` metric for `[REPLAN]` logging — **not** as its planning heuristic. That call site must not be disturbed by this change.
+- `BaseAlgorithm._compute_start_heuristic(maze_map, start)` (BFS *forward* from a start cell, also wall-aware) exists but is dead code: a repo-wide search confirms it is never called anywhere. Its docstring — and `src/algorithms/README.md`'s copy of the claim — states it is "used by D*-Lite at initialisation." That is stale and must be corrected regardless of the decision below.
+
+**Decision — scope of the flag:** implement `--heuristic` for **A* only** in this pass. D*-Lite's heuristic is not a stylistic choice: `Key(s) = (min(g,rhs) + h(s, s_start) + km, min(g,rhs))` requires `h` to be consistent with respect to the fixed reference point `s_start` (incrementally corrected via `km` as the robot moves), which is a different mathematical role from A*'s admissible-to-goal `h`. Swapping in a wall-aware `min_path`-to-`s_start` heuristic (built on the otherwise-unused `_compute_start_heuristic`) is plausible in principle, but recomputing a wall-aware heuristic on a schedule that doesn't match D*-Lite's incremental-repair assumptions risks breaking its consistency proof — that needs to be verified against the algorithm's correctness argument before it's wired in, not assumed safe by analogy with A*. Treat D*-Lite support as an explicit follow-up, not part of this pass; `--heuristic manhattan` passed with `--algo dstar_lite` is accepted (D*-Lite already behaves this way) but has no effect, and `--heuristic min_path` with `--algo dstar_lite` is likewise accepted and is also a no-op (document this explicitly rather than leaving it to be discovered).
+
+**Implementation:**
+
+1. `BaseAlgorithm.__init__` gains a new parameter, stored unvalidated (validity is enforced by `run.py`'s `argparse choices=`, and `BaseAlgorithm` is trusted-internal-code otherwise):
+   ```python
+   heuristic: str = "min_path",
+   ...
+   self._heuristic: str = heuristic
+   ```
+2. Add a new dispatch method to `BaseAlgorithm` (does not replace `_compute_goal_heuristic`, which stays as-is — it's still needed verbatim for D*-Lite's `residual_distance` logging call):
+   ```python
+   def _compute_heuristic(
+       self, maze_map: MazeMap, goals: list[tuple[int, int]],
+   ) -> dict[tuple[int, int], int | float]:
+       """Dispatch on self._heuristic: wall-aware BFS ('min_path', default)
+       or straight-line Manhattan distance to the nearest goal ('manhattan')."""
+       if self._heuristic == "manhattan":
+           return {
+               (x, y): min(
+                   (abs(x - gx) + abs(y - gy) for gx, gy in goals),
+                   default=float('inf'),
+               )
+               for y in range(maze_map.height)
+               for x in range(maze_map.width)
+           }
+       return self._compute_goal_heuristic(maze_map, goals)
+   ```
+3. `AStarExplorer.run()`: replace the three call sites at `astar.py:281,301,353` (`self._compute_goal_heuristic(maze_map, remaining_goals)`) with `self._compute_heuristic(maze_map, remaining_goals)`.
+4. `run.py::_parse_args`: add
+   ```python
+   parser.add_argument(
+       "--heuristic", choices=["min_path", "manhattan"], default="min_path",
+       help="Heuristic for planning (astar only; ignored by dstar_lite).",
+   )
+   ```
+   and pass `heuristic=args.heuristic` in the algorithm constructor call in `main()`.
+5. Fix the stale `_compute_start_heuristic` docstring in `base_algorithm.py` (remove the "used by D*-Lite at initialisation" claim; state it is currently unused) and the corresponding row in `src/algorithms/README.md`.
+6. Update `docs/mms.md`'s Run Command Format template and bullet list to include `[--heuristic min_path|manhattan]`, noting it only affects `--algo astar`.
+7. Update `src/algorithms/README.md`'s `BaseAlgorithm` constructor signature table (new `heuristic` row) and add a `_compute_heuristic` row next to the existing `_compute_goal_heuristic`/`_compute_start_heuristic` rows.
+
+**Validation:**
+- Existing `tests/test_integration.py` must keep passing unmodified — default `heuristic="min_path"` reproduces current behavior exactly (no call site is exercised differently).
+- New test: run `AStarExplorer` with `heuristic="manhattan"` on `_single_path_maze_with_wall()` (already used by `TestReplanningConsistency`, has internal walls where BFS and Manhattan distance diverge) and assert the goal is still reached (Manhattan is always ≤ true wall-aware distance, so admissibility — hence optimality — is preserved) and, optionally, that `nodes_expanded` is `>=` the `min_path` run's on the same maze (a less-informed heuristic should never expand fewer nodes).
+- Manual: `python run.py --algo astar --heuristic manhattan` against the MMS GUI; confirm the `f-XXXh-YYY` cell text now shows straight-line `h` values.
+
+### A.2 `--no-log` flag
+
+**Files:** `run.py`.
+
+**Current state:** `run.py::main()` unconditionally calls `logger.export_json(output_dir=args.output_dir)` after `algorithm.run()` returns (`run.py:112`); there is no way to suppress it.
+
+**Implementation:**
+```python
+parser.add_argument("--no-log", action="store_true", help="Skip writing the JSON metrics log.")
 ```
---heuristic [min_path|manhattan]
+```python
+if not args.no_log:
+    logger.export_json(output_dir=args.output_dir)
 ```
+A polished `help=` string is low priority — MMS invokes `run.py` as a fixed shell command, so the user never sees `argparse`'s `--help` output in normal use. The authoritative documentation channel is `docs/mms.md`'s Run Command Format section, which **must** list `--no-log` and note that `--output-dir` is irrelevant when it's set. stderr diagnostics (`_report_event`, `base_algorithm.py:119-126`) are untouched by this flag: they write directly to `sys.stderr` and have no dependency on `MetricsLogger`/`export_json`.
 
-Default: `min_path` (matches current behavior, so omitting the flag changes nothing).
+**Validation:**
+- New lightweight test (`tests/test_run_cli.py` or similar): monkeypatch `sys.argv` and call `run._parse_args()` directly (no `MmsAPI`/GUI dependency) to assert `--no-log` defaults to `False` and sets `True` when passed, alongside the existing `--goal`/`--n-goals` mutual-exclusivity check already implied by `_parse_args`.
+- Manual: `python run.py --algo astar --no-log` against MMS or a stub; confirm no new file appears under `results/logs/` while `[WALL]`/`[REPLAN]` stderr lines still appear.
 
-**Current state:** `BaseAlgorithm` already provides two BFS-based heuristic helpers:
-- `_compute_goal_heuristic(maze_map, goals)` — multi-source BFS *backward* from the goal set, wall-aware (respects confirmed walls, freespace assumption elsewhere). This is what "`min_path`" refers to: the shortest distance to the nearest goal under the *currently known* wall layout, not a straight-line distance. `AStarExplorer` calls this exclusively as its heuristic today (`astar.py:281,301,353`).
-- `_compute_start_heuristic(maze_map, start)` — BFS *forward* from a start cell, also wall-aware. Its docstring states it is "used by D*-Lite at initialisation," and `src/algorithms/README.md` repeats that claim — but this is **stale**: a repo-wide search confirms `_compute_start_heuristic` is never called anywhere in `dstar_lite.py` (or elsewhere). `DStarLiteExplorer` instead computes its own heuristic inline via `_h(s)` (`dstar_lite.py:200-202`), a hardcoded Manhattan distance from `s` to `self._s_start`, ignoring walls entirely.
+### A.3 Stderr diagnostics: consolidate `[WALL]`, round `[REPLAN]`
 
-**"manhattan" should be understood precisely as:** straight-line `|dx| + |dy|` distance, ignoring all wall knowledge — i.e., exactly the formula D*-Lite's `_h()` already uses (for a different target: the current start cell, not the goal).
+**Files:** `src/algorithms/base_algorithm.py`, `src/algorithms/astar.py`, `src/algorithms/dstar_lite.py`. **Depends on:** `_report_event` (already implemented, `algorithms_gui_revision.md` §E).
 
-**Open question — scope of the flag:** A*'s heuristic is goal-directed (distance to nearest goal), while D*-Lite's is start-directed (distance to `s_start`), and the latter is not a stylistic choice: D*-Lite's `Key(s)` consistency invariant depends on the heuristic being consistent with respect to a fixed reference point (`s_start`, adjusted incrementally via `km`), which is a different mathematical role than A*'s admissible-to-goal heuristic. It is not yet decided whether `--heuristic` is meant to:
-- apply to A* only (leaving D*-Lite's Manhattan-to-start heuristic untouched), or
-- apply to both, in which case D*-Lite's `min_path` option would need a wall-aware distance *to `s_start`* — presumably built on the otherwise-unused `_compute_start_heuristic` — and its interaction with the `km` incremental-update mechanism and D*-Lite's correctness guarantees would need explicit verification, since naively recomputing a wall-aware heuristic on a schedule that mismatches D*-Lite's incremental-repair assumptions could break its consistency proof.
+**a. One `[WALL]` line per sensing event, not per wall.**
 
-**Wiring implied (for the later blueprint):** a new `BaseAlgorithm.__init__` parameter, a new `argparse` choice in `run.py::_parse_args`, and passing the resolved heuristic through to whichever call site(s) the scope decision above lands on. Once implemented, update `docs/mms.md` (Run Command Format section) and `src/algorithms/README.md` (constructor signature table and the `_compute_goal_heuristic`/`_compute_start_heuristic` rows) to document the new flag and correct the stale `_compute_start_heuristic` docstring/README claim either way.
-
-### 2. `--no-log` flag
-
-Add an optional boolean flag to `run.py` that skips writing the JSON metrics log to `results/logs/`, while leaving stderr diagnostics untouched:
-
-```
---no-log
-```
-
-Default: off (logs are saved, matching current behavior).
-
-**Current state:** `run.py::main()` unconditionally calls `logger.export_json(output_dir=args.output_dir)` after `algorithm.run()` returns (`run.py:112`). There is currently no way to suppress this short of not passing `--output-dir` correctly or deleting the file afterward.
-
-**Why stderr is unaffected regardless:** `_report_event` (`base_algorithm.py:119-126`, used for `[WALL]`/`[REPLAN]` reporting) writes directly to `sys.stderr` and has no dependency on `MetricsLogger` or `export_json` — the two are already independent subsystems, so `--no-log` only needs to guard the `export_json` call itself.
-
-**Note:** with `--no-log` set, `--output-dir` becomes irrelevant for that run; worth a one-line mention in `run.py --help` / `docs/mms.md` so the two flags' relationship isn't left implicit.
-
-### 3. Stderr log formatting
-
-Two independent refinements to the diagnostics introduced by `algorithms_gui_revision.md` §E (already implemented in both explorers via `_report_event`):
-
-**a. Consolidate `[WALL]` lines per cell.** Today, each of the (up to four) newly-discovered walls at a cell produces its own line, e.g.:
-```
-[WALL] (0, 0) e
-[WALL] (0, 0) s
-[WALL] (0, 0) w
-```
-Replace this with a single line per sensing event, reporting the status of all four directions at that cell in one place. Two equivalent presentations are given as alternatives (a decision between them is left open):
+Today, each newly-discovered wall produces its own line (`astar.py:268-272,330-335`; `dstar_lite.py:461-478,588-595`). Replace with a single consolidated line reporting all four directions' current status at that cell, using the existing `DIR_TO_STR` letters (`n`/`e`/`s`/`w`) — chosen over a directional-glyph alternative because it reuses `constants.py`'s existing direction-to-string mapping instead of introducing a second lookup table — in `Direction`'s canonical `N, E, S, W` order (matching `_sense_and_update`'s own read order, `base_algorithm.py:183-188`), with `_` marking an absent wall:
 ```
 [WALL] (0, 0) _ e s w
 ```
-or, using directional glyphs instead of letters:
+Add a shared helper to `BaseAlgorithm`:
+```python
+def _report_walls(self, maze_map: MazeMap, x: int, y: int) -> None:
+    """One consolidated stderr line for all four walls at (x, y), reporting
+    the cell's complete now-known wall status (not just this pass's deltas)."""
+    parts = [
+        DIR_TO_STR[direction] if maze_map.has_wall(x, y, direction) else '_'
+        for direction in Direction
+    ]
+    self._report_event(f"[WALL] ({x}, {y}) {' '.join(parts)}")
 ```
-[WALL] (0, 0) _ → ↓ ←
-```
-In both, the four positions represent a fixed direction order and `_` marks a direction with no wall.
-
-Missing details worth settling before implementation (not resolved here):
-- **Direction order.** The example lists north (absent, `_`), then east, south, west — matching `Direction`'s canonical enum order (`N, E, S, W`; `constants.py:12-21`) and the order `_sense_and_update` already reads walls in (`base_algorithm.py:183-188`). Adopting that existing order avoids introducing a second convention.
-- **What the line reports.** Because `_sense_and_update` senses all four walls of the current cell on every call (not just the newly-discovered ones), a consolidated line can cheaply show the cell's complete now-known wall status, not merely the deltas from this pass — matching the given example, where `e s w` are shown even though (in the original per-wall version) they might have been discovered across separate earlier visits to the same cell. This should be stated explicitly, since "log ... all discovered walls" is ambiguous between "all walls discovered in this pass" and "all walls known at this cell so far."
-- **Emission gate.** To actually *reduce* verbosity (the stated goal) rather than increase it, the line should still be emitted only when at least one new wall was confirmed during that sensing pass — i.e., preserve the existing `is_new` gate that currently suppresses output when nothing changed — rather than logging a line on every sense.
-- **Symbol choice.** Letters vs. arrows is a presentation choice with no functional difference; either is fine as long as it's applied consistently at all four call sites (A*'s initial sense and main-loop sense; D*-Lite's initial sense and main-loop sense).
-
-**b. Round `[REPLAN]` numeric fields to two decimals.** Illustrative example given:
-```
-[REPLAN] pos=(0, 8) expanded=12 residual=9 cost_ratio=1.3333333333333333 time_ms=2.734
-```
-→
-```
-[REPLAN] pos=(0, 8) expanded=12 residual=9 cost_ratio=1.33 time_ms=2.73
+Call it, guarded by the existing "at least one new wall this pass" condition (so verbosity actually decreases rather than growing — a line is still skipped when nothing new was found), at all four existing call sites, replacing their per-direction reporting loop while leaving each direction's `api.set_wall(...)` display call untouched (only the stderr line consolidates):
+```python
+if any(is_new for _, is_new in wall_events):
+    self._report_walls(maze_map, x, y)
 ```
 
-**Correction to the "current" example:** both `astar.py` and `dstar_lite.py` already format `time_ms` with `:.2f` at their `_report_event` call sites (e.g. `astar.py:368`), so `time_ms` is **already** rounded to two decimals today — the `time_ms=2.734` shown above as "current" does not actually occur. The only remaining gap is `cost_ratio`, which is interpolated at full `float` precision from `record['cost_ratio']` (`MetricsLogger.log_replanning_event`, `src/metrics/logger.py:95-98`).
+**b. Round `[REPLAN]` fields to two decimals; fix the `None` edge case.**
 
-**Missing detail:** `cost_ratio` can be `None` — `MetricsLogger` sets it to `None` whenever `residual_distance` is `0` or falsy (`logger.py:95-98`, e.g. when a replan is triggered while the robot is already at, or adjacent with zero residual to, a goal). A bare `f"{value:.2f}"` on `None` raises `TypeError`, so the rounding must special-case `cost_ratio is None` (e.g., print `None`/`n/a` unrounded) rather than assume it is always a float.
+`time_ms` is **already** formatted with `:.2f` at both `_report_event` call sites (`astar.py:368`, `dstar_lite.py:627`) — no change needed there. The only gap is `cost_ratio`, printed today at full `float` precision. `MetricsLogger.log_replanning_event` sets `cost_ratio` to `None` whenever `residual_distance` is `0` or falsy (`src/metrics/logger.py:95-98`, e.g. a replan triggered while already at zero residual distance from the goal) — a bare `f"{value:.2f}"` on `None` raises `TypeError`, so this must be special-cased.
+
+Both explorers currently duplicate the same `[REPLAN]` f-string block; consolidate into one shared `BaseAlgorithm` helper (removes the duplication and guarantees both algorithms format identically):
+```python
+def _report_replan(self, record: dict) -> None:
+    cost_ratio = record['cost_ratio']
+    cost_ratio_str = f"{cost_ratio:.2f}" if cost_ratio is not None else "None"
+    self._report_event(
+        f"[REPLAN] pos=({record['position'][0]}, {record['position'][1]}) "
+        f"expanded={record['nodes_expanded']} "
+        f"residual={record['residual_distance']} "
+        f"cost_ratio={cost_ratio_str} "
+        f"time_ms={record['planning_time_s'] * 1000:.2f}"
+    )
+```
+Replace both existing inline blocks (`astar.py:362-369`, `dstar_lite.py:621-628`) with `self._report_replan(logger.replanning_events[-1])`.
+
+**Validation:**
+- `tests/test_no_stray_print.py` requires no change — both new helpers still route through `_report_event`, i.e. `print(..., file=sys.stderr)`.
+- New unit-level check (can be a small `SimAPI`-backed integration test or a direct call): construct a `MetricsLogger`, log a replanning event with `residual_distance=0` (→ `cost_ratio=None`), and assert `_report_replan` produces `cost_ratio=None` in the output instead of raising.
+- Manual: run either explorer under MMS or `SimAPI` on a maze with multiple walls around one cell; confirm exactly one `[WALL]` line appears per sensing event with all four directions shown, and `[REPLAN]` lines show 2-decimal `cost_ratio`.
 
 ---
 
-## GUI
+## B. GUI changes
 
-### 1. Legend color palette and font
+### B.1 Legend color palette, swatch rendering, and window de-duplication
 
-Update `src/constants.py` to add a hex-color lookup table for the MMS GUI legend window (currently `constants.py`'s `COLORS` dict maps each color letter only to a human-readable name, e.g. `'b': 'Blue'` — there is no hex value anywhere in the codebase to actually paint a swatch).
+**Files:** `src/constants.py`, `run.py`.
 
-Proposed palette (dark/uppercase and light/lowercase variants):
+**Palette — resolved to match `constants.py`'s existing 15 supported colors** (the previously-proposed 17-code palette included `O`/Dark-Orange and `V`/Dark-Violet, neither of which exists in `COLORS` today, and neither of which is referenced by any current `LEGEND` entry in `AStarExplorer`/`DStarLiteExplorer` — so there is nothing to reconcile against the real simulator; simply add hex values for the 15 codes already defined):
 
-| Code | Meaning | Hex | Code | Meaning | Hex |
-|------|---------|---------|------|---------|---------|
-| `A` | Dark Gray | `#1A1A1A` | `a` | Gray | `#B3B3B3` |
-| `B` | Dark Blue | `#000036` | `b` | Blue | `#0000BB` |
-| `C` | Dark Cyan | `#003434` | `c` | Cyan | `#006867` |
-| `G` | Dark Green | `#004F00` | `g` | Green | `#00B600` |
-| `O` | Dark Orange | `#371800` | `o` | Orange | `#BF6100` |
-| `R` | Dark Red | `#550000` | `r` | Red | `#DF0000` |
-| `V` | Dark Violet | `#390035` | — | — | — |
-| `Y` | Dark Yellow | `#333300` | `y` | Yellow | `#B3B300` |
-| — | — | — | `k` | Black | `#000000` |
-| — | — | — | `w` | White | `#FFFFFF` |
+```python
+# src/constants.py, alongside COLORS
+COLOR_HEX: dict[str, str] = {
+    'k': '#000000', 'w': '#FFFFFF',
+    'b': '#0000BB', 'B': '#000036',
+    'a': '#B3B3B3', 'A': '#1A1A1A',
+    'c': '#006867', 'C': '#003434',
+    'g': '#00B600', 'G': '#004F00',
+    'o': '#BF6100',
+    'r': '#DF0000', 'R': '#550000',
+    'y': '#B3B300', 'Y': '#333300',
+}
+```
+(15 entries, one per `COLORS` key — `'O'`/`'V'` intentionally omitted; add them only if a future revision actually introduces a `LEGEND` entry that needs them.)
 
-**Discrepancy to reconcile:** `constants.py`'s existing `COLORS` dict is explicitly commented "all 15 supported colors" and currently defines 15 entries (`k, b, a, c, g, o, r, w, y` and `B, C, A, G, R, Y`). This palette lists 17 codes — it additionally includes `O` (Dark Orange) and `V` (Dark Violet), neither of which exists in `COLORS` today. Since neither `docs/mms.md` nor `src/api/mms_api.py` documents the MMS protocol's full supported color set, this discrepancy should be verified against the actual MMS simulator (`mackorone/mms`) before implementation — either `COLORS` is currently incomplete (in which case add `O`/`V`), or this palette over-specifies relative to what the real GUI accepts (in which case trim it). This is a factual question with a single right answer, not a design choice, so it is called out rather than guessed at here.
+**Rendering** — replace `run.py::_show_legend`'s plain-text `tk.Label` rendering with color swatches, styled like `src/algorithms/base.py::show_color_legend()` (`tk.Canvas` rectangle filled with the entry's hex color, `("Arial", 12, "bold")` title, `("Arial", 10)` entries):
 
-Render the legend using this palette, styled like `src/algorithms/base.py::show_color_legend()` — which draws each entry as a `tk.Canvas` rectangle filled with the entry's actual hex color next to a text label, using `("Arial", 12, "bold")` for the window title and `("Arial", 10)` for each entry — replacing `run.py::_show_legend`'s current plain-text rendering (`tk.Label` only, no color swatch, `("Courier", 12)` for the symbol column).
+```python
+def _show_legend(algo_name: str, legend: list[tuple[str, str]]) -> None:
+    import tkinter as tk
+    from src.constants import COLOR_HEX
 
-**Open question (unchanged from the prior pass — left for the implementation phase, not resolved here):** should a previously-opened legend window be closed automatically when a new simulation starts, to avoid multiple stacked windows? One relevant constraint worth carrying into that decision: `run.py` is invoked as a **fresh OS process** by MMS on every "Run" click (confirmed in `docs/mms.md` Step 5 and by `run.py`'s use of `multiprocessing.Process(..., daemon=True)`, `run.py:93-95`) — there is no long-lived parent process across runs that could hold an in-memory handle to a previous run's legend window. Any "close the existing one first" behavior would therefore need an out-of-process signal (e.g. a lock/PID file, or OS-level window enumeration by title), not just tracking a `Process` object.
+    _write_legend_lock()
+    try:
+        root = tk.Tk()
+        root.title(f"{algo_name} — GUI legend")
+        tk.Label(root, text="GUI Legend", font=("Arial", 12, "bold")).grid(
+            row=0, column=0, columnspan=3, sticky="w", padx=6, pady=(6, 10))
+        for row, (symbol, meaning) in enumerate(legend, start=1):
+            code = symbol.split()[0]           # leading token, e.g. 'b' or 'f-XXX'
+            hex_color = COLOR_HEX.get(code)     # None for text-format rows (no swatch)
+            canvas = tk.Canvas(root, width=22, height=22,
+                                highlightthickness=1, highlightbackground="black")
+            if hex_color:
+                canvas.create_rectangle(0, 0, 22, 22, fill=hex_color, outline=hex_color)
+            canvas.grid(row=row, column=0, padx=6, pady=2)
+            tk.Label(root, text=symbol, anchor="w", font=("Arial", 10)).grid(
+                row=row, column=1, sticky="w", padx=6, pady=2)
+            tk.Label(root, text=meaning, anchor="w", font=("Arial", 10)).grid(
+                row=row, column=2, sticky="w", padx=6, pady=2)
+        root.mainloop()
+    finally:
+        _LEGEND_LOCK.unlink(missing_ok=True)
+```
+**Note:** `LEGEND` entries mix genuine color rows (e.g. `"b  (Blue)"`) with text-format rows that describe cell-text patterns, not colors (e.g. `"f-XXX"`, `"inf"`). `symbol.split()[0]` reliably extracts the leading token for both — a real color letter for color rows, or the whole text-pattern string (which won't be a `COLOR_HEX` key) for text-format rows — so `COLOR_HEX.get(code)` naturally returns `None` and the swatch is skipped for those rows without any special-casing. This has been checked against every current entry in both `AStarExplorer.LEGEND` and `DStarLiteExplorer.LEGEND`.
 
-### 2. Traversed-path removal (A* and D*-Lite)
+**Window de-duplication (resolved — implement in this pass):** `run.py` is invoked as a fresh OS process by MMS on every "Run" click (`docs/mms.md` Step 5; `run.py` already spawns the legend via `multiprocessing.Process(..., daemon=True)`, `run.py:93-95`), so there is no long-lived parent process across runs that could hold an in-memory handle to a previous run's legend window — any previous legend `Process` object is already gone by the time a new `run.py` starts. Use a PID lock file in the system temp directory instead:
+```python
+import os
+import signal
+import tempfile
+from pathlib import Path
 
-The traversed-path highlight (every cell the robot has physically visited, drawn cyan via the shared `_traversed_cells()` helper, `base_algorithm.py:128-135`) clutters the GUI without adding information beyond what the planned-path highlight already conveys, and should be removed from both explorers' displays:
+_LEGEND_LOCK = Path(tempfile.gettempdir()) / "mazesolver_legend.pid"
 
-- `AStarExplorer._gui_show_search` (`astar.py:241-242`) — remove the `for cx, cy in self._traversed_cells(maze_map): api.set_color(cx, cy, 'c')` loop.
-- `DStarLiteExplorer._gui_redraw_persistent_state` (`dstar_lite.py:308-309`) — remove the equivalent loop.
+def _close_existing_legend() -> None:
+    """Terminate a legend window left over from a previous run, if any."""
+    if not _LEGEND_LOCK.exists():
+        return
+    try:
+        pid = int(_LEGEND_LOCK.read_text().strip())
+        os.kill(pid, signal.SIGTERM)
+    except (ValueError, ProcessLookupError, PermissionError):
+        pass
+    _LEGEND_LOCK.unlink(missing_ok=True)
 
-**Scope note:** this only removes the *display* call. `_traversed_cells()` and the underlying `MazeMap` visit-count tracking are unaffected and still needed — `MetricsLogger`'s `distinct_cells_visited`/`total_visits` metrics and `MazeMap.mark_visit` are unrelated to this GUI highlight and must keep working exactly as they do today.
+def _write_legend_lock() -> None:
+    _LEGEND_LOCK.write_text(str(os.getpid()))
+```
+In `main()`, call `_close_existing_legend()` **before** spawning the new `multiprocessing.Process` for `_show_legend`; `_show_legend` itself writes its own PID via `_write_legend_lock()` right after entering (see snippet above) and removes the lock file in a `finally` block on normal exit (window closed manually). A stale lock left behind by a crash is harmless: `os.kill(pid, 0)`-style failure (`ProcessLookupError`) is caught and the stale file is cleaned up on the next run.
 
-### 3. D*-Lite: consolidate into a single `gui_show_search` entry point
+**Validation:**
+- Manual: launch `run.py` twice in a row (simulating two consecutive MMS "Run" clicks) without closing the first legend window; confirm the first window closes automatically when the second run starts, and that a single leftover lock file from a killed process doesn't prevent a later run from opening its own legend.
+- Manual: visually confirm swatch colors render correctly for every `LEGEND` row in both `AStarExplorer` and `DStarLiteExplorer`, and that `"f-XXX"`/`"f-XXXh-YYY"`/`"g-XXXr-YYY"`/`"inf"` rows render with no swatch (blank first column) rather than an error or a wrong color.
 
-Today, D*-Lite's display logic is split across two places: `_gui_redraw_persistent_state` (called *before* each `_compute_shortest_path()`, redraws goals/traversed path/`_previously_expanded`) and inline `set_color`/`clear_color`/`set_text` calls scattered inside `_compute_shortest_path`'s over-/under-consistent branches (`dstar_lite.py:349-408`), which paint live as the search runs. A* has no such split — its `_gui_show_search` is a single function called once per plan/replan, after the search completes, driven purely by the final `f_values`/`open_set`/`closed_set`.
+### B.2 Traversed-path removal
 
-The request is to give D*-Lite the same shape: one `gui_show_search`-equivalent entry point, called once after each `_compute_shortest_path()` completes, that recolors the board from the final post-cycle state according to a strict priority order (highest wins when a cell matches more than one rule):
+**Files:** `src/algorithms/astar.py` (standalone fix), `src/algorithms/dstar_lite.py` (superseded by §B.3 — no separate patch needed).
 
-| Priority | Rule | Color | Condition |
+The traversed-path highlight (every cell the robot has physically visited, drawn cyan via the shared `_traversed_cells()` helper, `base_algorithm.py:128-135`) adds clutter without information beyond the planned-path highlight, and is removed from both displays:
+
+- **A*:** remove the `for cx, cy in self._traversed_cells(maze_map): api.set_color(cx, cy, 'c')` loop from `AStarExplorer._gui_show_search` (`astar.py:241-242`). This is the only change needed for A* in this item.
+- **D\*-Lite:** the equivalent loop in `_gui_redraw_persistent_state` (`dstar_lite.py:308-309`) disappears automatically as part of §B.3's rewrite — the new `_gui_show_search` has no traversed-path drawing at all, so implementing §B.3 already satisfies this item for D*-Lite. No separate patch is required.
+
+**Scope note:** this removes only the *display* call. `_traversed_cells()` and the underlying `MazeMap` visit-count tracking are unrelated to `MetricsLogger`'s `distinct_cells_visited`/`total_visits` metrics and `MazeMap.mark_visit`, and must keep working exactly as today.
+
+**Validation:** manual — run either algorithm and confirm no cyan appears on cells that are neither the planned path nor a goal.
+
+### B.3 D*-Lite: unified `gui_show_search` with priority-ordered coloring
+
+**Files:** `src/algorithms/dstar_lite.py`. **Depends on:** §B.2 (subsumes it).
+
+**Current state:** D*-Lite's display logic is split across `_gui_redraw_persistent_state` (called *before* each `_compute_shortest_path()`, redrawing goals/traversed-path/`_previously_expanded` from the *previous* cycle's state) and inline `set_color`/`clear_color` calls scattered inside `_compute_shortest_path`'s over-/under-consistent branches (`dstar_lite.py:349,369,387,389,406,408`), which paint live as the search runs. A* has no such split: `_gui_show_search` is one function, called once per plan/replan *after* the search completes, driven by final state only.
+
+**Target design:** give D*-Lite the same shape — one entry point, called once *after* each `_compute_shortest_path()` completes, that recolors the board from final live state under a strict, first-match-wins priority order:
+
+| Priority | Rule | Color | Live condition |
 |---|---|---|---|
-| 1 (highest) | Goal | `G` (Dark Green) / `g` (Green) | cell is a remaining / reached goal |
-| 2 | Inconsistent | `R` (Dark Red) | `g(s) ≠ rhs(s)` (equivalently: in the priority queue `U`) |
-| 3 | Trivial | cleared background | `g(s) = rhs(s) = ∞` |
-| 4 | Last expanded/updated | `b` (Blue) | expanded/updated (and left consistent) in the most recent `_compute_shortest_path()` call |
-| 5 | Planned path | `c` (Cyan) | on the current-position-to-goal path, and not already colored by rule 4 |
-| 6 (lowest) | Previously expanded/updated | `B` (Dark Blue) | expanded/updated (and left consistent) in an earlier call, not yet reclassified by rules 2–3 |
+| 1 (highest) | Goal | `G` (Dark Green) / `g` (Green) | `s ∈ _remaining_goal_set` / `s ∈ _reached_goals` |
+| 2 | Inconsistent | `R` (Dark Red) | `g[s] ≠ rhs[s]` (equivalently `s ∈ _U`) |
+| 3 | Trivial | cleared background | `g[s] = rhs[s] = ∞` |
+| 4 | Last expanded/updated | `b` (Blue) | `s ∈ _expanded_this_cycle` |
+| 5 | Planned path | `c` (Cyan) | `s` on the reconstructed current-position-to-goal path |
+| 6 (lowest) | Previously expanded/updated | `B` (Dark Blue) | `s ∈ _previously_expanded` |
 
-Text rule: on every `_compute_shortest_path()` call, whether or not it changed the plan (`n_exp` may be `0`), the displayed `g`/`rhs` text should reflect current values for the affected cells.
+Text is unaffected by this change: `set_text` calls stay exactly where they are today (`_update_rhs`, and both branches of `_compute_shortest_path`), which already keep every touched cell's `g-XXXr-YYY` text live and non-stale — there is no full-board text sweep to add, since nothing in the current implementation ever lets displayed text go stale.
 
-**Architectural implication (not prescribed, but implied by "single entry point"):** painting `'b'`/`'R'` colors *inline*, mid-search, is incompatible with a priority-ordered redraw computed from final state — a cell's rule-4-vs-rule-2 outcome can only be known once the cycle has finished. Consolidating therefore implies moving the inline `set_color` calls in `_compute_shortest_path` out of the search loop entirely, replacing them with a single post-cycle pass; `_gui_redraw_persistent_state`'s current before-the-cycle call would similarly need to move to after.
+**Resolution — no explicit pruning of `_previously_expanded`/`_expanded_this_cycle` is needed.** Because priority is evaluated top-down against *live* `g`/`rhs`/queue state at draw time (rules 1–3 always checked before rules 4/6), a stale set entry is harmless: if a cell in `_previously_expanded` has since become inconsistent or trivial, rule 2 or 3 preempts rule 6 automatically and it is drawn correctly without ever being removed from the set. This holds even *within* one cycle (a cell expanded earlier in the same `_compute_shortest_path()` call can be re-perturbed and land back in `_U` before the call returns — rule 2 still wins at draw time). The sets are bounded by maze size (≤ width×height ≈ 256 cells on a 16×16 maze) regardless, so unbounded growth is not a concern. This replaces both previously-open "pruning mechanics" questions with a single mechanism: **recompute color from live state at draw time; never trust set membership above rules 1–3.**
 
-**Redefinition of "last" vs. "previously" expanded, relative to `algorithms_gui_revision.md` §D.3:** §D.3 defined `_previously_expanded` as a monotonically-growing, write-only history of every cell ever expanded in the run, merged from `_expanded_this_cycle` after *every* `_compute_shortest_path()` call regardless of whether that call changed the plan — and the current implementation already does exactly this (`dstar_lite.py:482-483,533-534,579-580,614-615` all merge unconditionally; only the *metrics-logging* call is gated on `n_exp > 0`, not the merge). So the "even if `n_exp=0`" rule is **already satisfied** by the existing code — that is not a new requirement.
+**Implementation:**
 
-What **is** new, and not yet implemented, is **pruning**: today `_previously_expanded` only grows and is never pruned. The rule above requires actively removing a cell from it (recoloring to `R` or clearing) once that cell's live `g`/`rhs` state changes to inconsistent or trivial in a *later* cycle, in order to preserve the stated invariant that both the "last" and "previously" sets contain only currently-consistent, non-trivial cells and are disjoint from each other and from rules 1–3.
+1. Add a `states()` accessor to `_DStarQueue` (`dstar_lite.py:87-148`) so inconsistent cells can be enumerated directly instead of re-deriving them from a full `g`/`rhs` scan:
+   ```python
+   def states(self) -> Iterable[tuple[int, int]]:
+       """All states currently queued (i.e., all inconsistent nodes)."""
+       return self._valid.keys()
+   ```
+2. Replace `_gui_redraw_persistent_state` with:
+   ```python
+   def _gui_show_search(self, api: BaseAPI) -> None:
+       """Single entry point: recolor the board from live D*-Lite state.
+       Call once after each _compute_shortest_path() cycle completes.
+       Priority (first match wins): goal > inconsistent > trivial >
+       last-expanded (this cycle) > planned path > previously-expanded.
+       """
+       api.clear_all_color()
+       planned = set(self._reconstruct_planned_path()[1:])  # exclude current cell
+       candidates = (
+           self._remaining_goal_set
+           | set(self._reached_goals)
+           | set(self._U.states())
+           | self._expanded_this_cycle
+           | self._previously_expanded
+           | planned
+       )
+       for (x, y) in candidates:
+           if (x, y) in self._remaining_goal_set:
+               api.set_color(x, y, 'G')
+           elif (x, y) in self._reached_goals:
+               api.set_color(x, y, 'g')
+           elif self._g[(x, y)] != self._rhs[(x, y)]:
+               api.set_color(x, y, 'R')
+           elif self._g[(x, y)] == self._rhs[(x, y)] == _INF:
+               api.clear_color(x, y)
+           elif (x, y) in self._expanded_this_cycle:
+               api.set_color(x, y, 'b')
+           elif (x, y) in planned:
+               api.set_color(x, y, 'c')
+           elif (x, y) in self._previously_expanded:
+               api.set_color(x, y, 'B')
+   ```
+   Only cells that could plausibly need a non-default color are iterated — trivial cells not otherwise in `candidates` are already blank after `clear_all_color()`, so no full-maze scan is needed (unlike `_memory_occupancy`, which does need one for a different reason — that method is unaffected by this change).
+3. Remove the inline `set_color`/`clear_color` calls inside `_compute_shortest_path`'s over-/under-consistent branches (`dstar_lite.py:349,369,387,389,406,408`); keep every `set_text` call in that method exactly as-is.
+4. At all four `_compute_shortest_path()` call sites in `run()` (initial setup, reset-recovery, goal-reached, wall-discovery), change the sequencing to: **compute → draw → merge**, in that order — drawing *before* merging `_expanded_this_cycle` into `_previously_expanded` is what keeps rules 4 and 6 correctly disjoint for that cycle's draw call:
+   ```python
+   self._compute_shortest_path()          # (or: n_exp = self._compute_shortest_path())
+   self._gui_show_search(api)
+   self._previously_expanded |= self._expanded_this_cycle
+   ```
+   This replaces the old before-the-cycle `_gui_redraw_persistent_state(...)` call at three of the four sites, and adds the pairing to the initial call site, which previously had no draw call paired with it at all. The old special-casing of "skip the redraw on the very first call" is removed — `_gui_show_search` runs unconditionally after every cycle, including the first, with no special case needed. Keep the existing initial per-cell text/goal-color setup loop (`dstar_lite.py:451-457`) unchanged: it still provides the only on-screen state during the brief window between process start and the first `_compute_shortest_path()` call (before which `_gui_show_search` has not yet run).
+5. `_reconstruct_planned_path()` is unchanged in implementation, only in *when* it's called — now after `_compute_shortest_path()` (step 4) rather than before, so it naturally reconstructs from the just-computed `g` values instead of the previous cycle's. This is an intentional improvement (the displayed planned path becomes current, not one cycle stale), not a regression.
+6. `LEGEND` (`dstar_lite.py:158-167`) is unaffected — its color/meaning entries already match this priority table exactly.
 
-**Open question on pruning mechanics:** a cell can become inconsistent as a side effect of a *different* cell's update (via `_update_rhs`/`_update_vertex` on a neighbour) without itself being re-expanded that cycle — so pruning cannot rely solely on watching which cells get expanded each cycle; it requires checking each `_previously_expanded` member's *current* `g`/`rhs`/queue-membership state at (or before) each redraw. Whether that's done by scanning the set every cycle, or by hooking every `g`/`rhs` mutation site to update set membership as a side effect, is left open for the implementation pass.
+**Unaffected:** replanning-event logging (`MetricsLogger.log_replanning_event`, gated on `n_exp > 0`) is out of scope for this change and continues to log only plan-changing cycles, independent of how the GUI redraw is structured.
 
-**Open question on the text rule:** "the `g` and `rhs` values of all cells should be updated" could mean a full width×height text refresh every cycle, or (matching current behavior, where `set_text` is already called live at every `g`/`rhs` mutation site — `_update_rhs`, and both branches of `_compute_shortest_path`) simply confirms that no cell touched by a cycle should have stale displayed text. The former is a behavior change (full-board redraw every cycle); the latter is a restatement of existing behavior. Left open here.
+**Validation:**
+- `tests/test_integration.py`'s `TestSingleGoal`/`TestMultiGoal`/`TestReplanningConsistency` must keep passing unmodified — none assert GUI-call content, only logged metrics and final robot position, and this change does not touch `_compute_shortest_path`'s `g`/`rhs`/`nodes_expanded` computation, only its side-effecting `set_color` calls.
+- New test worth adding (requires a fake/recording `BaseAPI`, not currently present in the test suite): drive `DStarLiteExplorer` on a small maze via a `set_color`-recording stub and assert, after a replanning cycle, that no cell is ever assigned two conflicting colors and that a cell known to be inconsistent at cycle-end is never shown `'b'`/`'B'`.
+- Manual: run D*-Lite under MMS on a maze that forces at least two replanning cycles; visually confirm dark-blue (`B`) cells from an earlier cycle correctly flip to red or clear if a later wall discovery makes them inconsistent or trivial, without ever showing stale blue.
 
-**Path-reconstruction ordering:** `_reconstruct_planned_path()` (used for rule 5) is currently invoked *before* `_compute_shortest_path()` runs (inside `_gui_redraw_persistent_state`, using the *previous* cycle's `g` values). Moving the redraw to after the cycle (per the architectural implication above) means it would naturally use the *just-computed* `g` values instead — worth flagging as an intentional behavior change, not an oversight, once this is implemented.
+### B.4 Terminated-execution display behavior
 
-**Unaffected:** replanning-event logging (`MetricsLogger.log_replanning_event`, gated on `n_exp > 0`, i.e. only cycles that actually changed the plan) is explicitly out of scope for this change and must continue to log only plan-changing cycles.
+**Files:** `src/algorithms/base_algorithm.py` (shared helper), `src/algorithms/astar.py`, `src/algorithms/dstar_lite.py`.
 
-### 4. Terminated-execution display behavior
-
-When a run reaches its stopping condition, the final GUI frame should be simplified: clear per-search decoration (colors/text on non-goal cells) and leave only goal cells marked, with the following per-scenario rules:
+When a run reaches its stopping condition, the final GUI frame is simplified: non-goal cells are cleared, and goal cells alone remain marked, per this settled reading (confirmed: "remaining cells" means *non-goal* cells — goal cells, reached or not, are always exempt from the clear and always show at least `G`):
 
 | Scenario | Unreached goal cells | Reached goal cells | Order-of-reach text |
 |---|---|---|---|
-| Explicit multi-goal (`goals` list, ≥2 cells) or `n_random_goals ≥ 2`, all reached | — (none remain) | `g` (Green) | shown: `1`, `2`, `3`, … in reach order |
-| Default centre-area goal (`_is_default_goal`, run stops after the first of the 4 cells) | remain `G` (Dark Green) | the one reached cell: `g` (Green) | none |
-| Explicit single goal (`goals` list of exactly 1 cell) | — (none remain) | `g` (Green) | none |
+| Explicit multi-goal (`goals` list ≥ 2 cells) or `n_random_goals ≥ 2` | none remain | `g` (Green) | `1`, `2`, `3`, … in reach order |
+| Default centre-area goal (`_is_default_goal`; run stops after the first of the 4 cells) | remain `G` (Dark Green) | the one reached cell: `g` (Green) | none |
+| Explicit single goal (`goals` list of exactly 1 cell) | none remain | `g` (Green) | none |
 
-**Resolving an apparent tension in the original wording:** "clear all the remaining cells' color and text ... only display the reached goal/s in green" (general rule) appears to conflict with "in the default case ... all goal cells should be displayed in green (`G`)" (the default-case exception), since a literal "clear all remaining cells" would also wipe the three unreached centre-area cells. The coherent reading — adopted above — is that "remaining cells" means *non-goal* cells: goal cells (reached or not) are always exempt from the clear and always show at least `G`; only the default-area case ever has unreached goal cells left over at termination, since it's the only scenario where the run stops without every listed goal being reached by design (`algorithms_gui_revision.md` §B.1). This reading should be confirmed, not assumed, before implementation.
+Only goal cells reached in the current run carry the `g` color/text; `self._reached_goals` (already maintained as an append-ordered list by both explorers for the goal-color-persistence behavior in `algorithms_gui_revision.md` §C.3/§D.4) directly gives the 1-based reach order with no new bookkeeping.
 
-**Order-of-reach text is cheap to compute:** both explorers already maintain `self._reached_goals` as an append-ordered list for the goal-color-persistence fix in `algorithms_gui_revision.md` §C.3/§D.4 — its existing index order already *is* the reach order, so no new bookkeeping is needed to know "1st, 2nd, 3rd."
+**Out of scope — confirmed:** a run terminating *without* its goal condition satisfied (e.g. `AStarExplorer`'s `if len(path) < 2: break`, or `DStarLiteExplorer`'s `if self._rhs[self._s_start] == _INF: break` / `if best_next is None: break`) does not need dedicated final-frame handling — the maze corpus used by this project has been verified solvable by both algorithms, so these branches are not expected to execute in practice. The termination helper below is called unconditionally regardless of which `break`/loop-exit path was taken, which is sufficient: on the (unexercised) stuck path it will simply display whatever `self._reached_goals` holds at that point.
 
-**Gap not addressed by the original wording:** none of the three rows above cover a run that terminates *without* satisfying its goal condition — e.g. `AStarExplorer.run()`'s `if len(path) < 2: break` (no path exists) or `DStarLiteExplorer.run()`'s `if self._rhs[self._s_start] == _INF: break` / `if best_next is None: break` (robot stuck). What the final frame should look like in that case is currently unspecified and should be decided explicitly rather than left to fall out of whatever the last live frame happened to show.
+**Implementation** — add to `BaseAlgorithm` (both `self._goals` and `self._is_default_goal` are already set at construction; both subclasses already maintain `self._reached_goals` with the same name and shape):
+```python
+def _gui_show_termination(self, api: BaseAPI) -> None:
+    """Final GUI frame: clear all non-goal decoration, mark goal cells only.
+    Called once, unconditionally, at the end of run() in both explorers."""
+    api.clear_all_color()
+    api.clear_all_text()
+    multi_goal = not self._is_default_goal and len(self._goals) >= 2
+    for i, (gx, gy) in enumerate(self._reached_goals, start=1):
+        api.set_color(gx, gy, 'g')
+        if multi_goal:
+            api.set_text(gx, gy, str(i))
+    if self._is_default_goal:
+        reached = set(self._reached_goals)
+        for gx, gy in self._goals:
+            if (gx, gy) not in reached:
+                api.set_color(gx, gy, 'G')
+```
+`multi_goal` uniformly covers both the explicit-`goals`-list and `n_random_goals` construction paths via `len(self._goals) >= 2`, without needing to know which constructor argument was originally supplied (only `_is_default_goal` needs distinguishing, to skip text for the default centre-area case even though it also involves 4 candidate cells).
 
-**Cross-cutting scope:** this behavior is identical for both explorers and is triggered purely by how each `run()` exits its main loop — a natural candidate for a shared `BaseAlgorithm` helper (paralleling `_display_maze_outline`/`_traversed_cells`) rather than duplicated logic in `astar.py` and `dstar_lite.py`, though the exact mechanism is left for the implementation pass.
+Call `self._gui_show_termination(api)` at the end of `run()` in both `AStarExplorer` and `DStarLiteExplorer`, immediately before `logger.stop()`. No headless-mode special-casing is needed: `SimAPI.set_color`/`clear_all_color`/`set_text`/`clear_all_text` are all confirmed no-ops (`src/api/sim_api.py:107-129`), matching every other GUI call in the codebase.
+
+**Validation:**
+- Manual, per scenario: run `--algo astar`/`--algo dstar_lite` with (a) `--goal 3 3 --goal 0 3` (explicit multi-goal), (b) no goal flags (default centre area), (c) `--goal 3 3` (explicit single goal); confirm the final frame in each matches its row in the table above.
+- `tests/test_integration.py`'s existing goal-reaching assertions are unaffected (this only changes GUI calls, not final robot position or logged metrics), but consider adding a `set_color`/`set_text`-recording `BaseAPI` stub test asserting the exact final-frame color/text set for the multi-goal case (order-of-reach text `"1"`, `"2"`, … matches `_reached_goals` order).
+
+---
+
+## C. Cross-cutting validation checklist
+
+| Change | Files | Existing tests affected | New coverage to add |
+|---|---|---|---|
+| A.1 `--heuristic` | `base_algorithm.py`, `astar.py`, `run.py` | none (default preserves current behavior) | Manhattan-heuristic admissibility/expansion-count test on `_single_path_maze_with_wall()` |
+| A.2 `--no-log` | `run.py` | none | `_parse_args()` unit test; manual no-file-written check |
+| A.3 stderr formatting | `base_algorithm.py`, `astar.py`, `dstar_lite.py` | `tests/test_no_stray_print.py` (must keep passing unmodified — still routes through `_report_event`) | `cost_ratio=None` formatting test |
+| B.1 legend palette/dedup | `constants.py`, `run.py` | none | manual: swatch rendering per `LEGEND` row; manual: second-run auto-closes first legend |
+| B.2 traversed-path removal | `astar.py` (+ `dstar_lite.py` via B.3) | none (cosmetic) | manual visual check |
+| B.3 D*-Lite `gui_show_search` | `dstar_lite.py` | `TestSingleGoal`/`TestMultiGoal`/`TestReplanningConsistency` (unaffected — no GUI-call assertions) | recording-`BaseAPI` test: no conflicting colors, no stale `B`/`b` on now-inconsistent cells |
+| B.4 termination display | `base_algorithm.py`, `astar.py`, `dstar_lite.py` | goal-reaching/log-schema assertions unaffected | manual per-scenario final-frame check; optional recording-`BaseAPI` test for order-of-reach text |
+
+No item in this blueprint changes `MetricsLogger`'s schema or any planning outcome other than A.1 (heuristic, opt-in via flag, admissibility-preserving) — so `tests/test_integration.py` is expected to keep passing unmodified throughout.
