@@ -551,6 +551,31 @@ class DStarLiteExplorer(BaseAlgorithm):
             self._km += abs(self._s_start[0] - s_last[0]) + abs(self._s_start[1] - s_last[1])
             s_last = self._s_start
 
+            # ---- Sense walls on arrival (every cell, before the goal check) ----
+            # Mirrors A*: sense the cell we just entered *before* asking whether
+            # it is a goal, so the robot never steps off an un-sensed cell (a
+            # reached goal included) through a wall it never knew about.
+            new_wall_events = self._sense_and_update(maze_map, robot, api)
+            has_new = any(is_new for _, is_new in new_wall_events)
+            if has_new:
+                for direction, is_new in new_wall_events:
+                    if not is_new:
+                        continue
+                    api.set_wall(robot.x, robot.y, DIR_TO_STR[direction])
+                    dx, dy = DIR_TO_DELTA[direction]
+                    nx, ny = robot.x + dx, robot.y + dy
+                    # Both sides of the newly confirmed wall need rhs updates
+                    pos = robot.position
+                    if pos not in self._remaining_goal_set:
+                        self._update_rhs(pos)
+                        self._update_vertex(pos)
+                    if self._in_bounds(nx, ny):
+                        v = (nx, ny)
+                        if v not in self._remaining_goal_set:
+                            self._update_rhs(v)
+                            self._update_vertex(v)
+                self._report_walls(maze_map, robot.x, robot.y)
+
             # ---- Check goal reached ----
             if robot.position in self._remaining_goal_set:
                 self._remaining_goal_set.discard(robot.position)
@@ -593,34 +618,11 @@ class DStarLiteExplorer(BaseAlgorithm):
                 self._previously_expanded |= self._expanded_this_cycle
                 continue
 
-            # ---- Sense walls ----
-            new_wall_events = self._sense_and_update(maze_map, robot, api)
-
-            # ---- Apply wall changes to D*-Lite ----
-            has_new = any(is_new for _, is_new in new_wall_events)
+            # ---- Replanning event (only when new walls actually changed the map) ----
+            # n_exp = number of expanded nodes
+            # n_exp == 0 means ComputeShortestPath terminated immediately
+            # (s_start already consistent): no path change, no event to log.
             if has_new:
-                for direction, is_new in new_wall_events:
-                    if not is_new:
-                        continue
-                    api.set_wall(robot.x, robot.y, DIR_TO_STR[direction])
-                    dx, dy = DIR_TO_DELTA[direction]
-                    nx, ny = robot.x + dx, robot.y + dy
-                    # Both sides of the newly confirmed wall need rhs updates
-                    pos = robot.position
-                    if pos not in self._remaining_goal_set:
-                        self._update_rhs(pos)
-                        self._update_vertex(pos)
-                    if self._in_bounds(nx, ny):
-                        v = (nx, ny)
-                        if v not in self._remaining_goal_set:
-                            self._update_rhs(v)
-                            self._update_vertex(v)
-
-                self._report_walls(maze_map, robot.x, robot.y)
-
-                # ---- Replanning event (only when plan was actually modified) ----
-                # n_exp == 0 means ComputeShortestPath terminated immediately
-                # (s_start already consistent): no path change, no event to log.
                 logger.start_plan_timer()
                 n_exp = self._compute_shortest_path()
                 self._gui_show_search(api)
