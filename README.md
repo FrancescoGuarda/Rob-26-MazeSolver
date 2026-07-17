@@ -52,7 +52,30 @@ Follow the detailed setup instructions in [mms.md](docs/mms.md) to install the M
 
 ## Citations
 
-This project builds upon the following works.
+This project builds upon the following works:
+
+- [1] mackorone, *mms — A Micromouse simulator*, version 1.2.0, software (MIT License), GitHub repository, 2024. [Online]. Available: <https://github.com/mackorone/mms> (accessed Jul. 17, 2026). — Used to run and visualize the maze-solving algorithms.
+- [2] J. Weisberg, *Micromouse Maze Collection*, dataset. [Online]. Available: <https://www.tcp4me.com/mmr/mazes/> (accessed Jul. 17, 2026). — Base collection of standard competition mazes, extended for this project's test set.
+
+BibTeX entries are also available in [CITATIONS.bib](CITATIONS.bib):
+
+```bibtex
+@misc{mms,
+  author       = {{mackorone}},
+  title        = {mms --- A Micromouse Simulator},
+  year         = {2024},
+  version      = {1.2.0},
+  howpublished = {\url{https://github.com/mackorone/mms}},
+  note         = {MIT License. Accessed: 2026-07-17}
+}
+
+@misc{weisberg_mazes,
+  author       = {Weisberg, Jeff},
+  title        = {Micromouse Maze Collection},
+  howpublished = {\url{https://www.tcp4me.com/mmr/mazes/}},
+  note         = {Accessed: 2026-07-17}
+}
+```
 
 ## License
 
