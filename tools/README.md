@@ -47,8 +47,17 @@ detour(ref, c) = d_BFS(ref, c) / d_Manhattan(ref, c)
 ```
 
 `d_BFS` is the true shortest-path distance in the maze (BFS,
-4-connectivity, respecting walls). This is the standard detour index /
-circuity from network analysis, adapted to Manhattan distance on a grid.
+4-connectivity, respecting walls). This is the standard **detour index**
+(also called *route factor* or, in transportation geography, *circuity*)
+from spatial-network analysis: the ratio of network distance to
+straight-line distance, ≥ 1, with 1 meaning "perfectly direct". The only
+adaptation here is that the straight-line term is the **Manhattan** (L1)
+distance rather than the usual Euclidean (L2) one — L1 is the correct
+straight-line lower bound on a 4-connected grid, and it is exactly the
+admissible heuristic a greedy / A\* planner would use, which is what makes
+a high ratio "deceptive" to such a planner.
+
+See **References** at the end of this section.
 
 Intuition: the detour index measures how much a cell **lies about its
 distance**. A cell with detour ≈ 1 is honest — it is about as far as it
@@ -151,3 +160,23 @@ These are deliberate design choices, kept simple on purpose:
   steps respectively. If you need goals that are also far in absolute
   terms, the score would need an added absolute-distance term — the tool
   does not do this.
+
+### References
+
+The detour index / route factor / circuity is a standard quantity in
+spatial-network analysis (defined there with Euclidean straight-line
+distance; we substitute Manhattan distance for the 4-connected grid):
+
+- M. Barthélemy, "Spatial networks," *Physics Reports* **499**(1–3),
+  1–101 (2011). — Review that defines the *detour index* / *route factor*
+  `Q(i, j) = d_route(i, j) / d_Euclidean(i, j) ≥ 1`. See §"Mixing space
+  and topology".
+- M. T. Gastner and M. E. J. Newman, "The spatial structure of networks,"
+  *Eur. Phys. J. B* **49**(2), 247–252 (2006). — Uses the same *route
+  factor* ratio to characterise how directly networks connect points.
+
+In transportation geography the identical ratio is usually called
+**circuity** (e.g. work by D. Levinson and collaborators on street-network
+circuity). We are not aware of prior work using this ratio specifically to
+*place* adversarial goals for a maze planner — that application is ours;
+only the underlying metric is from the literature.
