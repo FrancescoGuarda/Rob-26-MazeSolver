@@ -51,14 +51,16 @@ open mms.app              # macOS
 The run command instructs MMS how to invoke `run.py`, the repository's MMS GUI entry point. Use the template:
 
 ```bash
-.venv/bin/python run.py --algo [astar|dstar_lite] [--goal X Y ...] [--n-goals N] [--seed S] [--heuristic min_path|manhattan] [--output-dir DIR] [--no-log]
+.venv/bin/python run.py --algo [astar|dstar_lite] [--goal X Y ...] [--n-goals N] [--seed S] [--auto-goals MAZE] [-k N] [--heuristic min_path|manhattan] [--output-dir DIR] [--no-log]
 ```
 
 - `--algo`: the algorithm to run — `astar` or `dstar_lite` (required)
-- `--goal X Y`: a goal cell; repeat the flag for multiple goals (e.g. `--goal 3 3 --goal 0 3`). Mutually exclusive with `--n-goals`
+- `--goal X Y`: a goal cell; repeat the flag for multiple goals (e.g. `--goal 3 3 --goal 0 3`)
 - `--n-goals N`: generate `N` random goal cells instead of an explicit `--goal` list
-- `--seed S`: random seed used together with `--n-goals`
-- If neither `--goal` nor `--n-goals` is given, the algorithm defaults to the maze's 4-cell centre area
+- `--seed S`: random seed used together with `--n-goals` (requires `--n-goals`)
+- `--auto-goals MAZE`: place goals automatically by detour index in `MAZE` (see below)
+- `-k N`, `--n-auto-goals N`: how many goals `--auto-goals` should place, default `4`
+- `--goal`, `--n-goals` and `--auto-goals` are mutually exclusive; if none is given, the algorithm defaults to the maze's 4-cell centre area
 - `--heuristic min_path|manhattan`: planning heuristic, default `min_path` (wall-aware shortest-known-distance). `manhattan` uses straight-line distance instead, ignoring wall knowledge. Only affects `--algo astar`; `dstar_lite` always uses its own Manhattan-to-current-position heuristic regardless of this flag
 - `--output-dir DIR`: directory for the exported JSON log, default `results/logs/`
 - `--no-log`: skip writing the JSON metrics log entirely (stderr diagnostics are unaffected); useful to avoid filling `results/logs/` during debugging/testing runs
@@ -72,6 +74,36 @@ The run command instructs MMS how to invoke `run.py`, the repository's MMS GUI e
 > To find your exact interpreter path, activate your conda environment and run `which python`.
 
 On completion, `run.py` writes a JSON metrics log to `results/logs/` (the same schema produced by headless `SimAPI` runs via `experiments/run_batch.py`), so GUI and batch runs are directly comparable — unless `--no-log` was passed, in which case no file is written and `--output-dir` is ignored.
+
+### Automatic goal placement (`--auto-goals`)
+
+`--auto-goals` removes the manual copy-paste step from the goal workflow. Without it, running a placed-goal scenario in the GUI means running `tools/place_goals.py`, reading the `--goal X Y ...` line it prints, and pasting those coordinates into the "Run command" field — again for every maze and every goal count. With it, you name the maze once and the placement happens inside `run.py`:
+
+```bash
+# Equivalent to pasting the output of: python3 tools/place_goals.py 2015japan -k 4
+.venv/bin/python run.py --algo astar --auto-goals 2015japan -k 4
+```
+
+**The goals are identical to the tool's.** Both paths call the same `src.goal_placement.scenario_goals()`, which is deterministic — no randomness, fixed `(y, x)` tie-break — so for a given maze, start cell and `k` the result cannot differ. `--auto-goals` is a convenience over the same placement, not a second implementation of it, and `tools/place_goals.py` remains the way to *inspect* a placement (it also prints the detour score behind each goal, which `run.py` discards). The `k = 1` special case carries over unchanged: one goal at the maze's centre cell, deliberately not the first goal of a `k ≥ 2` placement — see `tools/README.md` for the rule and its rationale.
+
+**The start cell** is the robot's initial position (`(0, 0)`, the simulator convention), matching the default that `tools/place_goals.py` documents for `--start`.
+
+**Naming the maze is required, and is the one thing you must keep correct.** MMS's stdin/stdout protocol reports only the maze's width and height — it never tells the algorithm which maze file the GUI has loaded. Placement, however, needs the true wall layout (it runs BFS over the complete maze), so `run.py` has to parse the file itself and therefore has to be told which one. `MAZE` is resolved like the tool's argument — a bare name, `.txt` optional, looked up in `mazes/txt/` — and additionally accepts a path (absolute, or relative to the repository root) for mazes kept elsewhere, such as `mazes/maze_test.txt`:
+
+```bash
+--auto-goals 2015japan          # -> mazes/txt/2015japan.txt
+--auto-goals 2015japan.txt      # -> mazes/txt/2015japan.txt
+--auto-goals mazes/maze_test.txt  # -> path relative to the repo root
+```
+
+As a guard against a stale name left behind after switching mazes in the GUI, `run.py` compares the parsed file's dimensions with the simulator's and aborts on a mismatch:
+
+```text
+error: --auto-goals: '/…/mazes/txt/2015japan.txt' is 16x16, but the simulator
+reports 8x8 — the maze loaded in the GUI is not the one named here
+```
+
+Note the limit of this check: it only catches mismatches **of different size**. Two distinct 16×16 mazes are indistinguishable over the protocol, so if you load a different maze of the same dimensions the run will proceed with goals placed for the wrong layout. Update the flag when you change maze. Any other failure — missing or malformed file, an unreachable `k = 1` centre cell, a maze with no reachable candidate cells — also aborts with an `error: --auto-goals: …` message on stderr rather than falling back silently.
 
 **Example configuration:**
 

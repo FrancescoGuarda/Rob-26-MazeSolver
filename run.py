@@ -11,6 +11,7 @@ Usage (as configured in MMS's "Run command" field):
     .venv/bin/python run.py --algo astar
     .venv/bin/python run.py --algo dstar_lite --goal 3 3 --goal 0 3
     .venv/bin/python run.py --algo astar --n-goals 4 --seed 42
+    .venv/bin/python run.py --algo astar --auto-goals 2015japan -k 4
 """
 from __future__ import annotations
 
@@ -18,14 +19,17 @@ import argparse
 import multiprocessing
 import os
 import signal
+import sys
 import tempfile
 from pathlib import Path
 
 from src.algorithms.astar import AStarExplorer
 from src.algorithms.dstar_lite import DStarLiteExplorer
 from src.api.mms_api import MmsAPI
+from src.goal_placement import scenario_goals
 from src.maze_map import MazeMap
 from src.metrics.logger import MetricsLogger
+from src.parser.maze_parser import parse_maze
 from src.robot import Robot
 
 _ALGORITHMS = {
@@ -38,6 +42,63 @@ _ALGORITHMS = {
 # Step 5), so there is no long-lived parent process to hold an in-memory
 # handle to a prior run's legend Process object.
 _LEGEND_LOCK = Path(tempfile.gettempdir()) / "mazesolver_legend.pid"
+
+# Anchors for --auto-goals maze lookup, resolved from this file's location so
+# the flag does not depend on the working directory MMS launches run.py with.
+_REPO_ROOT = Path(__file__).resolve().parent
+_MAZE_DIR = _REPO_ROOT / "mazes" / "txt"
+
+
+def _resolve_maze_path(maze: str) -> Path:
+    """Resolve a --auto-goals argument to a maze file path.
+
+    A bare name ('2015japan', '.txt' optional) resolves against mazes/txt/;
+    anything containing a separator is a path, relative ones to the repo root.
+    """
+    name = maze if maze.endswith(".txt") else f"{maze}.txt"
+    path = Path(name)
+    if path.is_absolute():
+        return path
+    if len(path.parts) > 1:
+        return _REPO_ROOT / path
+    return _MAZE_DIR / name
+
+
+def _auto_goals(
+    maze: str, start: tuple[int, int], k: int, width: int, height: int,
+) -> list[tuple[int, int]]:
+    """Detour placement for *maze*, returned as an explicit goal list.
+
+    The in-process equivalent of pasting the '--goal X Y ...' line printed by
+    tools/place_goals.py: both call scenario_goals(), which is deterministic,
+    so the goals are identical. The maze must be named explicitly because the
+    MMS protocol exposes only its dimensions, never the loaded file; those
+    dimensions are checked here to catch a stale name of a different size.
+
+    Exits with a stderr message if the file is missing, malformed, disagrees
+    with the simulator's dimensions, or admits no valid placement.
+    """
+    maze_path = _resolve_maze_path(maze)
+    try:
+        wall_matrix, maze_width, maze_height = parse_maze(str(maze_path))
+    except (FileNotFoundError, ValueError) as exc:
+        sys.exit(f"error: --auto-goals: {exc}")
+
+    if (maze_width, maze_height) != (width, height):
+        sys.exit(
+            f"error: --auto-goals: '{maze_path}' is {maze_width}x{maze_height}, "
+            f"but the simulator reports {width}x{height} — the maze loaded in "
+            f"the GUI is not the one named here"
+        )
+
+    try:
+        goals = scenario_goals(wall_matrix, maze_width, maze_height, start, k)
+    except ValueError as exc:
+        sys.exit(f"error: --auto-goals: {exc}")
+    if not goals:
+        sys.exit(f"error: --auto-goals: no reachable cells from start {start}")
+
+    return [cell for cell, _detour in goals]
 
 
 def _close_existing_legend() -> None:
@@ -102,7 +163,8 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--goal", nargs=2, type=int, action="append", metavar=("X", "Y"), dest="goals",
-        help="Goal cell (repeatable for multi-goal); mutually exclusive with --n-goals",
+        help="Goal cell (repeatable for multi-goal); mutually exclusive with "
+        "--n-goals and --auto-goals",
     )
     parser.add_argument(
         "--n-goals", type=int, default=None,
@@ -111,6 +173,16 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--seed", type=int, default=None,
         help="Random seed used with --n-goals",
+    )
+    parser.add_argument(
+        "--auto-goals", metavar="MAZE", default=None,
+        help="Place goals by detour index in MAZE (name in mazes/txt, .txt "
+        "optional, or a path) instead of listing them with --goal; must name "
+        "the maze loaded in the GUI. Mutually exclusive with --goal/--n-goals",
+    )
+    parser.add_argument(
+        "-k", "--n-auto-goals", type=int, default=None, metavar="N",
+        help="Number of goals to place with --auto-goals (default: 4)",
     )
     parser.add_argument(
         "--heuristic", choices=["min_path", "manhattan"], default="min_path",
@@ -125,8 +197,24 @@ def _parse_args() -> argparse.Namespace:
         help="Skip writing the JSON metrics log (stderr diagnostics are unaffected)",
     )
     args = parser.parse_args()
-    if args.goals and args.n_goals is not None:
-        parser.error("--goal and --n-goals are mutually exclusive")
+    given = [
+        name for name, value in (
+            ("--goal", args.goals),
+            ("--n-goals", args.n_goals),
+            ("--auto-goals", args.auto_goals),
+        ) if value is not None
+    ]
+    if len(given) > 1:
+        parser.error(f"{', '.join(given[:-1])} and {given[-1]} are mutually exclusive")
+    # Flags that only mean something alongside the option they modify: reject
+    # them outright rather than accepting a value that would be ignored.
+    if args.seed is not None and args.n_goals is None:
+        parser.error("--seed requires --n-goals")
+    if args.n_auto_goals is not None:
+        if args.auto_goals is None:
+            parser.error("-k/--n-auto-goals requires --auto-goals")
+        if args.n_auto_goals < 1:
+            parser.error(f"-k/--n-auto-goals must be >= 1, got {args.n_auto_goals}")
     return args
 
 
@@ -151,7 +239,11 @@ def main() -> None:
     robot = Robot()
     logger = MetricsLogger(args.algo, f"mms_{width}x{height}")
 
-    goals = [tuple(g) for g in args.goals] if args.goals else None
+    if args.auto_goals is not None:
+        k = 4 if args.n_auto_goals is None else args.n_auto_goals
+        goals = _auto_goals(args.auto_goals, robot.position, k, width, height)
+    else:
+        goals = [tuple(g) for g in args.goals] if args.goals else None
     algorithm = _ALGORITHMS[args.algo](
         api, maze_map, robot, logger,
         goals=goals, n_random_goals=args.n_goals, random_seed=args.seed,

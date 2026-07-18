@@ -139,6 +139,14 @@ python3 experiments/01_experiment.py -k 3
 Each run also prints a ready-to-paste `--goal X Y` list for the GUI's
 "Run command" field (see `run.py`), e.g. `--goal 3 3 --goal 0 3`.
 
+Pasting that list is optional: `run.py --auto-goals MAZE [-k N]` performs the
+same placement in-process, so the GUI can be pointed at a maze by name instead
+of at hand-copied coordinates. Because both paths call `scenario_goals()` and
+placement is deterministic, the goals are identical either way — the tool
+stays the place to *see* a placement (it alone prints the detour scores),
+while `--auto-goals` is the way to *run* one. See `docs/mms.md` for the flag's
+maze-name resolution and its dimension check.
+
 ### Known limitations
 
 These are deliberate design choices, kept simple on purpose:
