@@ -76,6 +76,15 @@ class BaseAlgorithm(ABC):
         # markers survive clear_all_color()).
         self._reached_goals: list[tuple[int, int]] = []
 
+    @property
+    def goal_count(self) -> int:
+        """Number of goals requested for this run.
+
+        The default centre area counts as a single goal even though it
+        resolves to 4 adjacent cells (only one of them has to be reached).
+        """
+        return 1 if self._is_default_goal else len(self._goals)
+
     # ------------------------------------------------------------------
     # Abstract interface
     # ------------------------------------------------------------------

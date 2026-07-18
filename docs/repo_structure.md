@@ -33,7 +33,7 @@ Rob-26-MazeSolver/
 │   └── level3/
 │
 ├── results/
-│   ├── logs/
+│   ├── logs/          # <goal-count>/<algo>/*.json, e.g. one_goal/astar/
 │   └── plots/
 │
 ├── scripts/
@@ -101,7 +101,7 @@ Tools that operate on maze files or completed maps without the MMS simulator.
 
 #### `/src/metrics/`
 
-- **`logger.py`** — `MetricsLogger`: incremented by `BaseAlgorithm` on every move and turn. At run completion, computes derived metrics (distinct cells, wall-matrix export, offline path lengths via `Pathfinder`) and writes a single JSON file and an optional CSV row to `results/logs/`. Filename convention: `<algo>_<maze_name>_<YYYYMMDD_HHMMSS>.json`.
+- **`logger.py`** — `MetricsLogger`: incremented by `BaseAlgorithm` on every move and turn. At run completion, computes derived metrics (distinct cells, wall-matrix export, offline path lengths via `Pathfinder`) and writes a single JSON file and an optional CSV row to `results/logs/<goal-count>/<algo>/`. Filename convention: `<goal-count>/<algo>/<algo>_<maze_name>_<YYYYMMDD_HHMMSS>.json` — runs are bucketed first by how many goals they targeted (`one_goal/`, `two_goals/`, … `ten_goals/`, then numeric `12_goals/`) and then by algorithm, so the two algorithms sit side by side at each difficulty level and a long campaign remains browsable. Colliding filenames within the same second get a `_1`, `_2`, … suffix instead of overwriting.
 
 ---
 
@@ -117,7 +117,7 @@ Maze files sourced from `tcp4me.com/mmr/mazes/` and `micromouseonline/mazefiles`
 ### `/results/`
 All generated artefacts. **Not committed to git** (add `results/logs/` and `results/plots/` to .gitignore) to avoid bloating the repository with binary and data files.
 
-- **`logs/`** — One JSON file per `(algorithm, maze)` run. Each file contains all seven proposal metrics plus the serialised wall and visit matrices.
+- **`logs/`** — One JSON file per `(algorithm, maze, goal count)` run, filed under `<goal-count>/<algo>/`. Each file contains all seven proposal metrics plus the serialised wall and visit matrices. Because the tree is two levels deep, analysis code should glob `results/logs/*/*/*.json` (or `rglob("*.json")`) rather than a flat pattern.
 - **`plots/`** — PNG figures: heatmaps, barplots, and path-overlay visualisations. Named to match the corresponding log file.
 
 ---

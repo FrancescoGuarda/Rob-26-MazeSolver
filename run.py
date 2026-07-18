@@ -101,6 +101,20 @@ def _auto_goals(
     return [cell for cell, _detour in goals]
 
 
+def _maze_name(args: argparse.Namespace, width: int, height: int) -> str:
+    """Maze label for the log filename, best source first.
+
+    MMS reports only the maze dimensions, never which file is loaded, so the
+    name has to come from the invocation: --maze-name if given, otherwise the
+    maze --auto-goals already named. Falls back to the dimensions alone.
+    """
+    if args.maze_name:
+        return args.maze_name
+    if args.auto_goals is not None:
+        return _resolve_maze_path(args.auto_goals).stem
+    return f"mms_{width}x{height}"
+
+
 def _close_existing_legend() -> None:
     """Terminate a legend window left over from a previous run, if any."""
     if not _LEGEND_LOCK.exists():
@@ -189,8 +203,14 @@ def _parse_args() -> argparse.Namespace:
         help="Planning heuristic (astar only; ignored by dstar_lite)",
     )
     parser.add_argument(
+        "--maze-name",
+        help="Maze name recorded in the log (default: the --auto-goals maze, "
+             "else mms_<width>x<height>; MMS never reports the loaded file)",
+    )
+    parser.add_argument(
         "--output-dir", default="results/logs/",
-        help="Directory for the exported JSON log (default: results/logs/)",
+        help="Base directory for the exported JSON log; written to "
+        "<dir>/<goal-count>/<algo>/ (default: results/logs/)",
     )
     parser.add_argument(
         "--no-log", action="store_true",
@@ -237,18 +257,22 @@ def main() -> None:
     height = api.maze_height()
     maze_map = MazeMap(width, height)
     robot = Robot()
-    logger = MetricsLogger(args.algo, f"mms_{width}x{height}")
 
     if args.auto_goals is not None:
         k = 4 if args.n_auto_goals is None else args.n_auto_goals
         goals = _auto_goals(args.auto_goals, robot.position, k, width, height)
     else:
         goals = [tuple(g) for g in args.goals] if args.goals else None
+
+    logger = MetricsLogger(args.algo, _maze_name(args, width, height))
     algorithm = _ALGORITHMS[args.algo](
         api, maze_map, robot, logger,
         goals=goals, n_random_goals=args.n_goals, random_seed=args.seed,
         heuristic=args.heuristic,
     )
+    # Read back from the algorithm rather than from args: it is what resolved
+    # --goal / --n-goals / --auto-goals / the default centre goal into cells.
+    logger.set_goal_count(algorithm.goal_count)
 
     algorithm.run()
 

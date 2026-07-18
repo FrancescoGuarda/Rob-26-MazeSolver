@@ -171,3 +171,62 @@ def test_replanning_events_is_copy():
     events = logger.replanning_events
     events.clear()
     assert logger.total_replanning_events == 1
+
+
+# ---------------------------------------------------------------------------
+# Goal-count export bucketing
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("n_goals,expected_dir", [
+    (1, "one_goal"),
+    (2, "two_goals"),
+    (3, "three_goals"),
+    (4, "four_goals"),
+    (10, "ten_goals"),
+    (12, "12_goals"),
+])
+def test_export_json_goal_count_directory(n_goals, expected_dir):
+    logger = make_logger(algo="astar")
+    logger.set_goal_count(n_goals)
+    logger.start(); logger.stop()
+    with tempfile.TemporaryDirectory() as tmp:
+        path = logger.export_json(output_dir=tmp)
+        rel = os.path.relpath(path, tmp)
+        with open(path) as fh:
+            data = json.load(fh)
+    assert os.path.dirname(rel) == os.path.join(expected_dir, "astar")
+    assert data["goal_count"] == n_goals
+
+
+def test_export_json_without_goal_count_uses_unknown_bucket():
+    logger = make_logger(algo="astar")
+    logger.start(); logger.stop()
+    with tempfile.TemporaryDirectory() as tmp:
+        path = logger.export_json(output_dir=tmp)
+        rel = os.path.relpath(path, tmp)
+        with open(path) as fh:
+            data = json.load(fh)
+    assert os.path.dirname(rel) == os.path.join("unknown_goals", "astar")
+    assert data["goal_count"] is None
+
+
+def test_set_scenario_sets_goal_count():
+    logger = make_logger()
+    logger.set_scenario("mazes/txt/88us.txt", 3, [((7, 7), 0.5)])
+    logger.start(); logger.stop()
+    with tempfile.TemporaryDirectory() as tmp:
+        path = logger.export_json(output_dir=tmp)
+        assert os.path.basename(os.path.dirname(os.path.dirname(path))) == "three_goals"
+
+
+def test_export_json_does_not_overwrite_same_second_run():
+    """Two runs of the same algo/maze/goal count must produce two files."""
+    paths = []
+    with tempfile.TemporaryDirectory() as tmp:
+        for _ in range(3):
+            logger = make_logger()
+            logger.set_goal_count(1)
+            logger.start(); logger.stop()
+            paths.append(logger.export_json(output_dir=tmp))
+        assert len(set(paths)) == 3
+        assert all(os.path.exists(p) for p in paths)

@@ -2,7 +2,8 @@
 MetricsLogger: per-run performance metrics collector and exporter.
 
 Accumulates forward moves, turns, visit data, and elapsed time during a run,
-then exports results to a timestamped JSON file in results/logs/.
+then exports results to a timestamped JSON file in
+results/logs/<goal-count>/<algorithm>/.
 """
 from __future__ import annotations
 
@@ -21,7 +22,7 @@ class MetricsLogger:
 
     Usage::
 
-        logger = MetricsLogger("wall_following", "maze_test")
+        logger = MetricsLogger("astar", "maze_test")
         logger.start()
         # ... algorithm runs, calling logger.log_move() / logger.log_turn() ...
         logger.stop()
@@ -41,6 +42,8 @@ class MetricsLogger:
         # Replanning-event tracking (Phase 3 extension)
         self._replanning_events: list[dict] = []
         self._plan_timer_start: float | None = None
+        self._scenario: dict | None = None
+        self._goal_count: int | None = None
 
     # ------------------------------------------------------------------
     # Recording interface
@@ -70,6 +73,35 @@ class MetricsLogger:
         """Snapshot wall and visit matrices (use MazeMap.export_walls/visits)."""
         self._wall_matrix = wall_matrix
         self._visit_matrix = visit_matrix
+
+    def set_scenario(
+        self,
+        maze_file: str,
+        k: int,
+        goals: list[tuple[tuple[int, int], float]],
+    ) -> None:
+        """Record scenario metadata: maze path, goal count, (cell, detour) pairs.
+
+        Opaque to the logger — it stores whatever it is given without
+        knowing what a detour value means. Call before export_json(); if
+        never called, the exported "scenario" field is null.
+        """
+        self._goal_count = k
+        self._scenario = {
+            "maze_file": maze_file,
+            "k": k,
+            "goals": [
+                {"cell": list(cell), "detour": detour} for cell, detour in goals
+            ],
+        }
+
+    def set_goal_count(self, n_goals: int) -> None:
+        """Record how many goals the run targets (drives the export subdirectory).
+
+        Call before export_json(); if never called, logs land in an
+        "unknown_goals" bucket.
+        """
+        self._goal_count = n_goals
 
     def start_plan_timer(self) -> None:
         """Record the start time of a planning / replanning call."""
@@ -176,22 +208,53 @@ class MetricsLogger:
     # Export
     # ------------------------------------------------------------------
 
-    def export_json(self, output_dir: str = "results/logs/") -> str:
-        """Write metrics to a timestamped JSON file.
+    # Spelled-out names for the common goal counts; larger runs fall back to
+    # a numeric bucket ("12_goals"), which still sorts and globs cleanly.
+    _GOAL_WORDS = {
+        1: "one", 2: "two", 3: "three", 4: "four", 5: "five",
+        6: "six", 7: "seven", 8: "eight", 9: "nine", 10: "ten",
+    }
 
-        Creates *output_dir* if it does not exist.
+    def _goal_dirname(self) -> str:
+        """Name of the goal-count bucket directory, e.g. "one_goal", "four_goals"."""
+        n = self._goal_count
+        if n is None or n < 1:
+            return "unknown_goals"
+        word = self._GOAL_WORDS.get(n, str(n))
+        return f"{word}_goal" if n == 1 else f"{word}_goals"
+
+    def export_json(self, output_dir: str = "results/logs/") -> str:
+        """Write metrics to a timestamped JSON file, bucketed by goal count and algorithm.
+
+        The file is written to ``<output_dir>/<goal-count>/<algorithm_name>/``
+        (e.g. ``results/logs/one_goal/astar/``), created if it does not exist.
 
         Returns:
             The full path of the written file.
         """
-        os.makedirs(output_dir, exist_ok=True)
+        # Two levels: goal count first, then algorithm, so a scenario's astar
+        # and dstar_lite runs sit side by side under the same difficulty bucket.
+        safe_algo = "".join(
+            c if c.isalnum() or c in "-_" else "_" for c in self._algo
+        ).strip("_").lower() or "unknown"
+        run_dir = os.path.join(output_dir, self._goal_dirname(), safe_algo)
+        os.makedirs(run_dir, exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{self._algo}_{self._maze}_{timestamp}.json"
-        filepath = os.path.join(output_dir, filename)
+        # Second-granularity timestamps collide when a batch runs the same
+        # algorithm/maze/goal-count twice within a second; suffix instead of
+        # overwriting so no run is silently lost.
+        filepath = os.path.join(run_dir, f"{safe_algo}_{self._maze}_{timestamp}.json")
+        dup = 1
+        while os.path.exists(filepath):
+            filepath = os.path.join(
+                run_dir, f"{safe_algo}_{self._maze}_{timestamp}_{dup}.json"
+            )
+            dup += 1
 
         payload = {
             "algorithm": self._algo,
             "maze": self._maze,
+            "goal_count": self._goal_count,
             "timestamp": timestamp,
             "total_moves": self.total_moves,
             "forward_moves": self._forward_moves,
@@ -206,6 +269,7 @@ class MetricsLogger:
             "cumulative_planning_time_s": self.cumulative_planning_time,
             "cumulative_nodes_expanded": self.cumulative_nodes_expanded,
             "replanning_events": self._replanning_events,
+            "scenario": self._scenario,
         }
 
         with open(filepath, 'w') as fh:

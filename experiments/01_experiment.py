@@ -4,7 +4,7 @@ Experiment 01 — Smoke test: A* and D*-Lite on maze_test.txt
 
 Verifies correct end-to-end execution of both algorithms in headless mode
 (SimAPI) on the standard 16×16 test maze.  Prints a summary table and saves
-JSON logs to results/logs/.
+JSON logs to results/logs/<goal-count>/<algorithm>/.
 
 Run from the repository root:
     python experiments/01_experiment.py
@@ -48,6 +48,14 @@ MAZE_TEST = "mazes/txt/88us.txt"
 # Output directory
 LOG_DIR = "results/logs"
 
+# Log name per algorithm class. Must match run.py's _ALGORITHMS keys: the name
+# picks the log subdirectory, so headless and MMS runs of the same algorithm
+# have to agree or they end up in two separate buckets.
+ALGO_LOG_NAMES = {
+    AStarExplorer:     "astar",
+    DStarLiteExplorer: "dstar_lite",
+}
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -73,11 +81,12 @@ def _run(
     robot = Robot(x=0, y=0)
     algo_name = AlgoClass.__name__
 
-    logger = MetricsLogger(algo_name, maze_name)
+    logger = MetricsLogger(ALGO_LOG_NAMES[AlgoClass], maze_name)
     if scenario is not None:
         maze_file, k, pairs = scenario
         logger.set_scenario(maze_file, k, pairs)
     algo = AlgoClass(api, maze_map, robot, logger, goals=goals)
+    logger.set_goal_count(algo.goal_count)
 
     t0 = time.time()
     algo.run()

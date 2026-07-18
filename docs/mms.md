@@ -62,7 +62,8 @@ The run command instructs MMS how to invoke `run.py`, the repository's MMS GUI e
 - `-k N`, `--n-auto-goals N`: how many goals `--auto-goals` should place, default `4`
 - `--goal`, `--n-goals` and `--auto-goals` are mutually exclusive; if none is given, the algorithm defaults to the maze's 4-cell centre area
 - `--heuristic min_path|manhattan`: planning heuristic, default `min_path` (wall-aware shortest-known-distance). `manhattan` uses straight-line distance instead, ignoring wall knowledge. Only affects `--algo astar`; `dstar_lite` always uses its own Manhattan-to-current-position heuristic regardless of this flag
-- `--output-dir DIR`: directory for the exported JSON log, default `results/logs/`
+- `--maze-name NAME`: maze name recorded in the log filename. The MMS protocol exposes only the maze's *dimensions*, never which file the GUI has loaded, so the name cannot be detected automatically — it has to come from the invocation. Resolution order: `--maze-name` if given, else the maze already named by `--auto-goals`, else the fallback `mms_<width>x<height>`. In practice, a run started with `--auto-goals 2015japan` already logs as `astar_2015japan_<timestamp>.json` without passing this flag; use it for manual-goal runs where nothing else names the maze
+- `--output-dir DIR`: base directory for the exported JSON log, default `results/logs/`; the file is written to a goal-count/algorithm subdirectory of it (`results/logs/one_goal/astar/`, `results/logs/four_goals/dstar_lite/`). The goal count is read back from the algorithm after it has resolved `--goal`/`--n-goals`/`--auto-goals`, so the bucket always reflects the run that actually happened; the default centre goal counts as one goal
 - `--no-log`: skip writing the JSON metrics log entirely (stderr diagnostics are unaffected); useful to avoid filling `results/logs/` during debugging/testing runs
 
 > **Using conda instead of `.venv`?** The `.venv/bin/python` path above only applies to a `venv`-created environment. If you use conda, use the full path to your conda environment's Python interpreter instead:
@@ -73,7 +74,7 @@ The run command instructs MMS how to invoke `run.py`, the repository's MMS GUI e
 >
 > To find your exact interpreter path, activate your conda environment and run `which python`.
 
-On completion, `run.py` writes a JSON metrics log to `results/logs/` (the same schema produced by headless `SimAPI` runs via `experiments/run_batch.py`), so GUI and batch runs are directly comparable — unless `--no-log` was passed, in which case no file is written and `--output-dir` is ignored.
+On completion, `run.py` writes a JSON metrics log to `results/logs/<goal-count>/<algo>/` (the same schema produced by headless `SimAPI` runs via `experiments/run_batch.py`), so GUI and batch runs are directly comparable — unless `--no-log` was passed, in which case no file is written and `--output-dir` is ignored.
 
 ### Automatic goal placement (`--auto-goals`)
 
