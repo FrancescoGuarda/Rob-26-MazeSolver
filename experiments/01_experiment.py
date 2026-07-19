@@ -1,20 +1,21 @@
 """
-Experiment 01 — Smoke test: A* and D*-Lite on maze_test.txt
+Experiment 01 — A* and D*-Lite over the MAZES list
 ============================================================
 
-Verifies correct end-to-end execution of both algorithms in headless mode
-(SimAPI) on the standard 16×16 test maze.  Prints a summary table and saves
-JSON logs to results/logs/<goal-count>/<algorithm>/.
+Runs both algorithms in headless mode (SimAPI) on every maze listed in
+MAZES.  Prints a summary table and saves JSON logs to
+results/logs/<goal-count>/<algorithm>/.
 
 Run from the repository root:
     python experiments/01_experiment.py
 
 Optional flags:
-    --goals X1,Y1 X2,Y2   explicit goal list (default: maze centre)
-    -k/--k-goals N         scenario goal count, placed automatically via
-                            src.goal_placement.scenario_goals (k=1: classic
-                            micromouse centre goal; k>=2: detour placement).
-                            Mutually exclusive with --goals.
+    --goals X1,Y1 X2,Y2   explicit goal list (default: maze centre),
+                            applied to every maze
+    -k/--k-goals N         scenario goal count, placed automatically per maze
+                            via src.goal_placement.scenario_goals (k=1:
+                            classic micromouse centre goal; k>=2: detour
+                            placement). Mutually exclusive with --goals.
     --log-dir PATH         override log output directory
 """
 from __future__ import annotations
@@ -42,8 +43,21 @@ from src.robot import Robot
 
 """Default settings for batch experiments."""
 
-# Single test maze (used in development experiments)
-MAZE_TEST = "mazes/txt/88us.txt"
+# Mazes to run, by bare name — resolved against MAZE_DIR ('.txt' optional)
+MAZES = [
+    "88us",
+    "museum",
+    "2017apec",
+    "2015japan",
+    "93apec"
+]
+
+MAZE_DIR = "mazes/txt"
+
+# Planning heuristic passed to both algorithms. A* honours it ("manhattan":
+# straight-line |dx|+|dy|; "min_path": wall-aware BFS); D*-Lite ignores it
+# and always uses Manhattan internally.
+HEURISTIC = "manhattan"
 
 # Output directory
 LOG_DIR = "results/logs"
@@ -85,7 +99,7 @@ def _run(
     if scenario is not None:
         maze_file, k, pairs = scenario
         logger.set_scenario(maze_file, k, pairs)
-    algo = AlgoClass(api, maze_map, robot, logger, goals=goals)
+    algo = AlgoClass(api, maze_map, robot, logger, goals=goals, heuristic=HEURISTIC)
     logger.set_goal_count(algo.goal_count)
 
     t0 = time.time()
@@ -116,6 +130,7 @@ def _run(
 
 def _print_table(summaries: list[dict]) -> None:
     cols = [
+        ("maze",                 "<15"),
         ("algorithm",            "<20"),
         ("goal_reached",         "<13"),
         ("forward_moves",        "<14"),
@@ -140,7 +155,7 @@ def _print_table(summaries: list[dict]) -> None:
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Experiment 01: A* and D*-Lite on maze_test.txt")
+    parser = argparse.ArgumentParser(description="Experiment 01: A* and D*-Lite over the MAZES list")
     parser.add_argument(
         "--goals", nargs="*", metavar="X,Y",
         help="Goal coordinates as X,Y pairs (e.g. --goals 7,7 8,8). Default: maze centre.",
@@ -160,54 +175,59 @@ def main() -> None:
     if args.goals and args.k_goals is not None:
         parser.error("--goals and --k-goals/-k are mutually exclusive")
 
-    maze_path = MAZE_TEST
-    maze_name = os.path.splitext(os.path.basename(maze_path))[0]
-
-    print(f"Loading maze: {maze_path}")
-    wall_matrix, width, height = parse_maze(maze_path)
-    print(f"  Dimensions: {width}×{height}")
-
-    # Parse/derive goals
-    goals: list[tuple[int, int]] | None = None
-    scenario: tuple[str, int, list[tuple[tuple[int, int], float]]] | None = None
-
+    # Explicit goals from the command line apply to every maze
+    cli_goals: list[tuple[int, int]] | None = None
     if args.goals:
-        goals = []
+        cli_goals = []
         for token in args.goals:
             x_str, y_str = token.split(",")
-            goals.append((int(x_str), int(y_str)))
-        print(f"  Goals: {goals}")
-    elif args.k_goals is not None:
-        try:
-            pairs = scenario_goals(wall_matrix, width, height, (0, 0), args.k_goals)
-        except ValueError as exc:
-            parser.error(str(exc))
-        goals = [cell for cell, _ in pairs]
-        scenario = (maze_path, args.k_goals, pairs)
-        print(f"  Goals (k={args.k_goals} scenario):")
-        for cell, detour in pairs:
-            print(f"    {cell}  detour {detour:.3f}")
-    else:
-        print("  Goals: maze centre (default)")
+            cli_goals.append((int(x_str), int(y_str)))
 
-    print(f"  Log directory: {args.log_dir}")
-    print()
+    print(f"Log directory: {args.log_dir}")
 
     summaries: list[dict] = []
     log_paths: list[str] = []
 
-    for AlgoClass in (AStarExplorer, DStarLiteExplorer):
-        print(f"Running {AlgoClass.__name__}...")
-        summary, log_path = _run(
-            AlgoClass, wall_matrix, width, height,
-            goals, maze_name, args.log_dir, scenario=scenario,
-        )
-        summaries.append(summary)
-        log_paths.append(log_path)
-        goal_status = "✓ REACHED" if summary["goal_reached"] else "✗ NOT REACHED"
-        print(f"  {goal_status} | final pos: {summary['final_position']} | "
-              f"moves: {summary['total_moves']} | "
-              f"replanning events: {summary['replanning_events']}")
+    for maze in MAZES:
+        maze_file = maze if maze.endswith(".txt") else f"{maze}.txt"
+        maze_path = os.path.join(MAZE_DIR, maze_file)
+        maze_name = os.path.splitext(maze_file)[0]
+
+        print(f"\nLoading maze: {maze_path}")
+        wall_matrix, width, height = parse_maze(maze_path)
+        print(f"  Dimensions: {width}×{height}")
+
+        # Derive this maze's goals
+        goals: list[tuple[int, int]] | None = cli_goals
+        scenario: tuple[str, int, list[tuple[tuple[int, int], float]]] | None = None
+
+        if cli_goals is not None:
+            print(f"  Goals: {goals}")
+        elif args.k_goals is not None:
+            try:
+                pairs = scenario_goals(wall_matrix, width, height, (0, 0), args.k_goals)
+            except ValueError as exc:
+                parser.error(str(exc))
+            goals = [cell for cell, _ in pairs]
+            scenario = (maze_path, args.k_goals, pairs)
+            print(f"  Goals (k={args.k_goals} scenario):")
+            for cell, detour in pairs:
+                print(f"    {cell}  detour {detour:.3f}")
+        else:
+            print("  Goals: maze centre (default)")
+
+        for AlgoClass in (AStarExplorer, DStarLiteExplorer):
+            print(f"Running {AlgoClass.__name__}...")
+            summary, log_path = _run(
+                AlgoClass, wall_matrix, width, height,
+                goals, maze_name, args.log_dir, scenario=scenario,
+            )
+            summaries.append(summary)
+            log_paths.append(log_path)
+            goal_status = "✓ REACHED" if summary["goal_reached"] else "✗ NOT REACHED"
+            print(f"  {goal_status} | final pos: {summary['final_position']} | "
+                  f"moves: {summary['total_moves']} | "
+                  f"replanning events: {summary['replanning_events']}")
 
     print("\n=== Summary ===")
     _print_table(summaries)
@@ -216,13 +236,13 @@ def main() -> None:
     for p in log_paths:
         print(f"  {p}")
 
-    # Exit with error if any algorithm failed to reach its goal
+    # Exit with error if any run failed to reach its goal
     failures = [s for s in summaries if not s["goal_reached"]]
     if failures:
-        print(f"\n[FAIL] {len(failures)} algorithm(s) did not reach the goal.")
+        print(f"\n[FAIL] {len(failures)} run(s) did not reach the goal.")
         sys.exit(1)
     else:
-        print("[OK] Both algorithms reached their goals successfully.")
+        print(f"[OK] All {len(summaries)} runs reached their goals successfully.")
 
 
 if __name__ == "__main__":
