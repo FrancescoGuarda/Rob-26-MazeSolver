@@ -47,6 +47,7 @@ class BaseAlgorithm(ABC):
         n_random_goals: int | None = None,
         random_seed: int | None = None,
         heuristic: str = "min_path",
+        verbose: bool = True,
     ) -> None:
         self._api = api
         self._maze_map = maze_map
@@ -61,6 +62,11 @@ class BaseAlgorithm(ABC):
         # Manhattan-to-s_start heuristic regardless of this value (see _h() in
         # dstar_lite.py; a different mathematical role, tied to its Key/km invariant).
         self._heuristic: str = heuristic
+        # Gates _report_event: when False, [WALL]/[REPLAN] stderr diagnostics are
+        # suppressed (used by batch runs to avoid flooding stderr across hundreds
+        # of runs). Never affects MetricsLogger's exported JSON, only this
+        # stderr side-channel.
+        self._verbose: bool = verbose
         # True only when neither an explicit goal list nor a random-goal count
         # was supplied, i.e. the default centre-area goal kicked in. Captured
         # from which argument was given, not from the resolved coordinates, so
@@ -138,13 +144,16 @@ class BaseAlgorithm(ABC):
         return 0 <= x < self._width and 0 <= y < self._height
 
     def _report_event(self, message: str) -> None:
-        """Print a diagnostic line to stderr.
+        """Print a diagnostic line to stderr, unless verbose=False.
 
         stdout is reserved exclusively for the MMS stdin/stdout protocol, so
         all human-readable diagnostics go to stderr (a no-op for the protocol
-        under both MmsAPI and SimAPI).
+        under both MmsAPI and SimAPI). This is the single choke point that
+        _report_walls/_report_replan funnel through, so verbosity is gated
+        here only.
         """
-        print(message, file=sys.stderr)
+        if self._verbose:
+            print(message, file=sys.stderr)
 
     def _report_walls(self, maze_map: MazeMap, x: int, y: int) -> None:
         """One consolidated stderr line for all four walls at (x, y).

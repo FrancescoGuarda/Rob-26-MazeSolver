@@ -42,8 +42,17 @@ Follow the detailed setup instructions in [mms.md](docs/mms.md) to install the M
 
 **Setup and Usage:**
 - **[mms.md](docs/mms.md)** — Complete setup and usage guide for the MMS simulator integration
-- **[mazes/README.md](mazes/README.md)** — Maze file format specifications and difficulty levels
+- **[mazes/README.md](mazes/README.md)** — Maze file format specifications; all mazes live in [`mazes/txt/`](mazes/txt/), with exploration difficulty  determined by goal placement (see `tools/README.md`)
 - **[src/api/README.md](src/api/README.md)** — API interface documentation for `mms_api` and `sim_api`
+
+**Project Components:**
+- **[src/algorithms/README.md](src/algorithms/README.md)** — `AStarExplorer` and `DStarLiteExplorer` internals, shared `BaseAlgorithm`, GUI/stderr diagnostics
+- **[src/parser/README.md](src/parser/README.md)** — ASCII maze file parsing
+- **[src/metrics/README.md](src/metrics/README.md)** — `MetricsLogger` and the exported JSON log schema
+- **[tools/README.md](tools/README.md)** — maze generation, connectivity filtering, and the goal-placement/detour-index CLI
+
+**Maze Lookup:**
+- [Online maze viewer](https://htmlpreview.github.io/?https://github.com/FrancescoGuarda/Rob-26-MazeSolver/blob/main/mazes/index.html) — browse and visualize the maze set in the browser
 
 **Project Documentation:**
 - **[docs/Rob_26_proposal.md](docs/Rob_26_proposal.md)** — Original project proposal and objectives

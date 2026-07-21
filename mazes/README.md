@@ -1,15 +1,16 @@
 # Maze Files Directory
 
-This directory contains the maze files used for testing and evaluating the three maze-solving algorithms: **wall-following**, **flood fill**, and **A***.
+This directory contains the maze files used for testing and evaluating the project's two maze-solving algorithms: online **A*** (`AStarExplorer`) and **D*-Lite** (`DStarLiteExplorer`). See [`src/algorithms/README.md`](../src/algorithms/README.md) for algorithm internals.
 
 ## Organization
 
-Mazes are organized into three difficulty levels:
-- **`level1/`** — Simple mazes (8×8 or 16×16, tree-structured, no loops)
-- **`level2/`** — Intermediate mazes (16×16, with loops and dead-ends)
-- **`level3/`** — Complex mazes (16×16, with islands, multiple loops, wall-following-proof)
+All maze files live flat in [`txt/`](txt/).
 
-TODO: Add difficulty classification methodology and closed-list size thresholds.
+## Difficulty via Goal Placement
+
+Exploration difficulty is determined by **where the goals are placed** within a maze. Goal placement is scored by the **detour index** (BFS path length ÷ Manhattan distance): cells that look close but are actually far behind walls score highest, and are the most deceptive to a planner working from a partial map.
+
+Placement is computed by `src/goal_placement.py` (`scenario_goals()`, called automatically by headless batch runs and by `run.py --auto-goals`) and can be inspected manually via the `tools/place_goals.py` CLI. See [`tools/README.md`](../tools/README.md) for the full detour-index algorithm description, the placement rules, and known limitations — it is not repeated here.
 
 ## File Format
 

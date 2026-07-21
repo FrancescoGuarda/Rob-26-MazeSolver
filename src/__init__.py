@@ -8,7 +8,8 @@ Packages:
   src.api         — BaseAPI, MmsAPI (GUI), SimAPI (headless)
   src.parser      — ASCII maze file parser
   src.metrics     — MetricsLogger for per-run statistics
-  src.algorithms  — WallFollower, FloodFill, AStarExplorer (Phase 3)
+  src.algorithms  — AStarExplorer, DStarLiteExplorer (BaseAlgorithm subclasses)
+  src.goal_placement — automated detour-index goal placement (scenario_goals)
 """
 
 __version__ = "0.1.0"

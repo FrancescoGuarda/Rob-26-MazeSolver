@@ -186,9 +186,11 @@ class DStarLiteExplorer(BaseAlgorithm):
         n_random_goals: int | None = None,
         random_seed: int | None = None,
         heuristic: str = "min_path",
+        verbose: bool = True,
     ) -> None:
         super().__init__(
             api, maze_map, robot, logger, goals, n_random_goals, random_seed, heuristic,
+            verbose,
         )
 
         # D*-Lite state (initialised in run())

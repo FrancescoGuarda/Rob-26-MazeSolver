@@ -29,10 +29,13 @@ BaseAlgorithm(
     n_random_goals: int | None = None,
     random_seed: int | None = None,
     heuristic: str = "min_path",
+    verbose: bool = True,
 )
 ```
 
 `heuristic` selects the planning heuristic: `"min_path"` (default, wall-aware BFS distance) or `"manhattan"` (straight-line distance, ignoring walls). Currently only consulted by `AStarExplorer` — `DStarLiteExplorer` always uses its own Manhattan-to-current-position heuristic regardless of this value (a different mathematical role, tied to its `Key`/`km` consistency invariant; extending the flag to D*-Lite would need that consistency argument re-verified, not just a heuristic swap).
+
+`verbose` (default `True`) gates `_report_event`, the single choke point behind `_report_walls`/`_report_replan`: when `False`, `[WALL]`/`[REPLAN]` stderr diagnostics are suppressed entirely. It never affects `MetricsLogger`'s exported JSON — only this stderr side-channel. Set to `False` for batch runs (`experiments/run_batch.py`) to avoid flooding stderr across hundreds of runs.
 
 **Goal resolution** (performed once, at construction time, by `_resolve_goals`):
 
@@ -59,7 +62,7 @@ BaseAlgorithm(
 | `_compute_start_heuristic(maze_map, start)` | BFS **forward** from `start`; currently unused by either explorer |
 | `_check_reset(robot, api)` | Polls `api.was_reset()` once; if pressed, calls `api.ack_reset()` + `robot.reset()` (both default to the maze's fixed origin `(0, 0)` facing North — the same hardcoded convention used by the real MMS mouse and mirrored exactly by `SimAPI`) and returns `True`. Subclasses call this once per loop iteration and, on `True`, discard their in-progress plan/search state and resume from the robot's restored position |
 | `_in_bounds(x, y)` | Bounds check against the maze's `(width, height)` |
-| `_report_event(message)` | Print a diagnostic line to **stderr** (never stdout — the MMS protocol channel) |
+| `_report_event(message)` | Print a diagnostic line to **stderr** (never stdout — the MMS protocol channel), unless constructed with `verbose=False` |
 | `_report_walls(maze_map, x, y)` | One consolidated `[WALL] (x, y) n e s w` stderr line reporting all four directions' current wall status at a cell (`_` marks an absent wall); callers gate the call on "at least one new wall found this sensing pass" |
 | `_report_replan(record)` | One `[REPLAN] ...` stderr line from a `MetricsLogger` replanning-event record, with `cost_ratio`/`time_ms` rounded to 2 decimals (`cost_ratio` prints as `None` when the logger recorded it as `None`) |
 | `_display_maze_outline(api)` | Draw the maze's outer perimeter walls once at startup (cosmetic; a no-op under `SimAPI`). Does not affect `MazeMap`'s own wall knowledge |
@@ -163,4 +166,4 @@ logger.export_json(output_dir="results/logs/")
 
 ## Testing
 
-`tests/test_integration.py` runs both explorers end-to-end via `SimAPI` on handcrafted mazes (open, single-blocked-path, multi-goal) and validates goal-reaching, log schema, and cross-algorithm replanning-count consistency. `tests/test_no_stray_print.py` statically guards `src/algorithms/*.py` (and `src/api/mms_api.py`) against stray writes to **stdout**, which would corrupt the MMS stdin/stdout protocol in a way invisible to `SimAPI`-based tests. `print(..., file=sys.stderr)` is explicitly allowed (that is the intended diagnostic channel for `_report_event`); any other `print(...)` is rejected.
+`tests/test_integration.py` runs both explorers end-to-end via `SimAPI` on handcrafted mazes (open, single-blocked-path, multi-goal) and validates goal-reaching, log schema, and cross-algorithm replanning-count consistency. `tests/test_no_stray_print.py` statically guards `src/algorithms/*.py` (and `src/api/mms_api.py`) against stray writes to **stdout**, which would corrupt the MMS stdin/stdout protocol in a way invisible to `SimAPI`-based tests. `print(..., file=sys.stderr)` is explicitly allowed (that is the intended diagnostic channel for `_report_event`); any other `print(...)` is rejected. `tests/test_verbose_flag.py` captures stderr (`capsys`) on both explorers to confirm `verbose=False` suppresses all `[WALL]`/`[REPLAN]` output while `verbose=True` (the default) preserves it.
