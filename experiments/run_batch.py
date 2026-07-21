@@ -17,8 +17,13 @@ Heuristic is fixed to "manhattan" for both algorithms.
 
 Algorithms are constructed with verbose=False so
 [WALL]/[REPLAN] stderr diagnostics don't flood the terminal across the
-55 mazes x 4 goal-counts x 2 algorithms = up to 440 runs; progress is shown
-via a single tqdm bar plus a running summary table instead.
+55 mazes x 4 goal-counts x 2 algorithms = up to 440 runs. Progress is a
+single tqdm bar (live reached/failed counts in its postfix) plus a running
+average table redrawn in place once per maze — via _LiveTable, using
+tqdm.external_write_mode() so it never fights with the bar — rather than
+appended anew each time, so the terminal doesn't scroll. On a non-TTY
+stdout (piped to a file/CI log) the live redraw is skipped entirely; only
+the final summary is printed, plainly, once.
 
 Logs are written via MetricsLogger.export_json(), which already buckets by
 goal count and algorithm (results/logs/<goal-count>/<algo>/).
@@ -139,24 +144,32 @@ def _bucket_key(result: dict) -> tuple[str, int]:
     return (result["algorithm"], result["goal_count"])
 
 
-def _print_summary(results: list[dict], failures: list[dict]) -> None:
+_SUMMARY_COLS = [
+    ("algorithm",         "<20"),
+    ("goal_count",        "<11"),
+    ("runs",              "<6"),
+    ("goal_reached_rate", "<18"),
+    ("avg_total_moves",   "<16"),
+    ("avg_replanning",    "<15"),
+    ("avg_plan_time_s",   "<16"),
+]
+
+
+def _summary_lines(results: list[dict], failures: list[dict]) -> list[str]:
+    """Render the running-average table + failures list as plain text lines.
+
+    Pure (no I/O) so it can be reused both by the in-place live redraw during
+    the run and by the plain one-shot print of the final summary.
+    """
     buckets: dict[tuple[str, int], list[dict]] = defaultdict(list)
     for r in results:
         buckets[_bucket_key(r)].append(r)
 
-    cols = [
-        ("algorithm",         "<20"),
-        ("goal_count",        "<11"),
-        ("runs",              "<6"),
-        ("goal_reached_rate", "<18"),
-        ("avg_total_moves",   "<16"),
-        ("avg_replanning",    "<15"),
-        ("avg_plan_time_s",   "<16"),
-    ]
-    header = "  ".join(f"{name:{fmt}}" for name, fmt in cols)
-    sep = "  ".join("-" * int(fmt[1:]) for _, fmt in cols)
-    tqdm.write("\n" + header)
-    tqdm.write(sep)
+    lines: list[str] = []
+    header = "  ".join(f"{name:{fmt}}" for name, fmt in _SUMMARY_COLS)
+    sep = "  ".join("-" * int(fmt[1:]) for _, fmt in _SUMMARY_COLS)
+    lines.append(header)
+    lines.append(sep)
     for (algo, goal_count), rows in sorted(buckets.items()):
         n = len(rows)
         reached_rate = sum(r["goal_reached"] for r in rows) / n
@@ -172,12 +185,40 @@ def _print_summary(results: list[dict], failures: list[dict]) -> None:
             "avg_replanning":    f"{avg_replan:.1f}",
             "avg_plan_time_s":   f"{avg_plan_time:.4f}",
         }
-        tqdm.write("  ".join(f"{str(row[name]):{fmt}}" for name, fmt in cols))
-    tqdm.write("")
+        lines.append("  ".join(f"{str(row[name]):{fmt}}" for name, fmt in _SUMMARY_COLS))
     if failures:
-        tqdm.write(f"[SKIPPED/FAILED] {len(failures)} combination(s):")
+        lines.append(f"[SKIPPED/FAILED] {len(failures)} combination(s):")
         for f in failures:
-            tqdm.write(f"  {f['maze']} | {f['algorithm']} | k={f['goal_count']} | {f['reason']}")
+            lines.append(f"  {f['maze']} | {f['algorithm']} | k={f['goal_count']} | {f['reason']}")
+    return lines
+
+
+class _LiveTable:
+    """Redraws a small multi-line table in place, coexisting with a tqdm bar.
+
+    On a real terminal, each render() erases the previous render (cursor up
+    by its line count, clear to end of screen) inside tqdm.external_write_mode,
+    which hides the progress bar for the duration of the write and redraws it
+    fresh immediately below once we're done — so the bar never fights with
+    our own cursor movement. When stdout isn't a TTY (piped to a file/CI
+    log), rendering is a no-op: ANSI cursor codes would just corrupt a log
+    file, and there is no "in place" on a stream with no cursor. Print the
+    final summary separately, once, with plain tqdm.write calls instead.
+    """
+
+    def __init__(self) -> None:
+        self._enabled = sys.stdout.isatty()
+        self._prev_line_count = 0
+
+    def render(self, lines: list[str]) -> None:
+        if not self._enabled:
+            return
+        with tqdm.external_write_mode(file=sys.stdout):
+            if self._prev_line_count:
+                sys.stdout.write(f"\033[{self._prev_line_count}A\033[J")
+            sys.stdout.write("\n".join(lines) + "\n")
+            sys.stdout.flush()
+        self._prev_line_count = len(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -200,6 +241,8 @@ def main() -> None:
     total = len(maze_names) * len(GOAL_COUNTS) * len(ALGORITHMS)
     results: list[dict] = []
     failures: list[dict] = []
+    live_table = _LiveTable()
+    reached_count = 0
 
     with tqdm(total=total, desc="run_batch", unit="run") as bar:
         for maze_name in maze_names:
@@ -226,17 +269,20 @@ def main() -> None:
                             goals, maze_name, maze_path, args.log_dir, scenario,
                         )
                         results.append(result)
+                        reached_count += result["goal_reached"]
                     except Exception as exc:  # noqa: BLE001 - batch must not die on one bad run
                         failures.append({
                             "maze": maze_name, "algorithm": AlgoClass.__name__,
                             "goal_count": k, "reason": f"{type(exc).__name__}: {exc}",
                         })
                     bar.update(1)
+                    bar.set_postfix(reached=f"{reached_count}/{len(results)}", failed=len(failures))
 
-            _print_summary(results, failures)
+            live_table.render(_summary_lines(results, failures))
 
     tqdm.write("\n=== Final summary ===")
-    _print_summary(results, failures)
+    for line in _summary_lines(results, failures):
+        tqdm.write(line)
     tqdm.write(f"Logs saved under: {args.log_dir}")
 
     not_reached = [r for r in results if not r["goal_reached"]]
