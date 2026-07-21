@@ -12,15 +12,17 @@ Run from the repository root:
 Optional flags:
     --goals X1,Y1 X2,Y2   explicit goal list (default: maze centre),
                             applied to every maze
-    -k/--k-goals N         scenario goal count, placed automatically per maze
-                            via src.goal_placement.scenario_goals (k=1:
-                            classic micromouse centre goal; k>=2: detour
-                            placement). Mutually exclusive with --goals.
+    -k/--k-goals N         goal-count threshold: for each maze, runs every
+                            scenario k=1..N, goals placed automatically via
+                            src.goal_placement.scenario_goals (k=1: classic
+                            micromouse centre goal; k>=2: detour placement).
+                            Mutually exclusive with --goals.
     --log-dir PATH         override log output directory
 """
 from __future__ import annotations
 
 import argparse
+import glob
 import os
 import sys
 import time
@@ -43,16 +45,13 @@ from src.robot import Robot
 
 """Default settings for batch experiments."""
 
-# Mazes to run, by bare name — resolved against MAZE_DIR ('.txt' optional)
-MAZES = [
-    "88us",
-    "museum",
-    "2017apec",
-    "2015japan",
-    "93apec"
-]
-
 MAZE_DIR = "mazes/txt"
+
+# Mazes to run: every .txt in MAZE_DIR, by bare name (sorted for stable order)
+MAZES = sorted(
+    os.path.splitext(os.path.basename(p))[0]
+    for p in glob.glob(os.path.join(MAZE_DIR, "*.txt"))
+)
 
 # Planning heuristic passed to both algorithms. A* honours it ("manhattan":
 # straight-line |dx|+|dy|; "min_path": wall-aware BFS); D*-Lite ignores it
@@ -111,6 +110,7 @@ def _run(
     summary = {
         "algorithm":            algo_name,
         "maze":                 maze_name,
+        "goal_count":           algo.goal_count,
         "final_position":       robot.position,
         "goals":                algo._goals,
         "goal_reached":         robot.position in set(algo._goals),
@@ -132,6 +132,7 @@ def _print_table(summaries: list[dict]) -> None:
     cols = [
         ("maze",                 "<15"),
         ("algorithm",            "<20"),
+        ("goal_count",           "<11"),
         ("goal_reached",         "<13"),
         ("forward_moves",        "<14"),
         ("total_moves",          "<13"),
@@ -163,9 +164,9 @@ def main() -> None:
     parser.add_argument(
         "-k", "--k-goals", type=int, default=None,
         help=(
-            "Automatically place K scenario goals via "
-            "src.goal_placement.scenario_goals (k=1: classic micromouse "
-            "centre goal; k>=2: detour-index placement). "
+            "Goal-count threshold: run every scenario k=1..N per maze, goals "
+            "placed via src.goal_placement.scenario_goals (k=1: classic "
+            "micromouse centre goal; k>=2: detour-index placement). "
             "Mutually exclusive with --goals."
         ),
     )
@@ -174,6 +175,8 @@ def main() -> None:
 
     if args.goals and args.k_goals is not None:
         parser.error("--goals and --k-goals/-k are mutually exclusive")
+    if args.k_goals is not None and args.k_goals < 1:
+        parser.error("--k-goals/-k must be >= 1")
 
     # Explicit goals from the command line apply to every maze
     cli_goals: list[tuple[int, int]] | None = None
@@ -197,37 +200,42 @@ def main() -> None:
         wall_matrix, width, height = parse_maze(maze_path)
         print(f"  Dimensions: {width}×{height}")
 
-        # Derive this maze's goals
-        goals: list[tuple[int, int]] | None = cli_goals
-        scenario: tuple[str, int, list[tuple[tuple[int, int], float]]] | None = None
+        # Derive this maze's runs as (goals, scenario) pairs: one run for
+        # explicit/default goals, or a k=1..N sweep for --k-goals
+        runs: list[tuple[list[tuple[int, int]] | None,
+                         tuple[str, int, list[tuple[tuple[int, int], float]]] | None]] = []
 
         if cli_goals is not None:
-            print(f"  Goals: {goals}")
+            print(f"  Goals: {cli_goals}")
+            runs.append((cli_goals, None))
         elif args.k_goals is not None:
-            try:
-                pairs = scenario_goals(wall_matrix, width, height, (0, 0), args.k_goals)
-            except ValueError as exc:
-                parser.error(str(exc))
-            goals = [cell for cell, _ in pairs]
-            scenario = (maze_path, args.k_goals, pairs)
-            print(f"  Goals (k={args.k_goals} scenario):")
-            for cell, detour in pairs:
-                print(f"    {cell}  detour {detour:.3f}")
+            for k in range(1, args.k_goals + 1):
+                try:
+                    pairs = scenario_goals(wall_matrix, width, height, (0, 0), k)
+                except ValueError as exc:
+                    parser.error(str(exc))
+                print(f"  Goals (k={k} scenario):")
+                for cell, detour in pairs:
+                    print(f"    {cell}  detour {detour:.3f}")
+                runs.append(([cell for cell, _ in pairs], (maze_path, k, pairs)))
         else:
             print("  Goals: maze centre (default)")
+            runs.append((None, None))
 
-        for AlgoClass in (AStarExplorer, DStarLiteExplorer):
-            print(f"Running {AlgoClass.__name__}...")
-            summary, log_path = _run(
-                AlgoClass, wall_matrix, width, height,
-                goals, maze_name, args.log_dir, scenario=scenario,
-            )
-            summaries.append(summary)
-            log_paths.append(log_path)
-            goal_status = "✓ REACHED" if summary["goal_reached"] else "✗ NOT REACHED"
-            print(f"  {goal_status} | final pos: {summary['final_position']} | "
-                  f"moves: {summary['total_moves']} | "
-                  f"replanning events: {summary['replanning_events']}")
+        for goals, scenario in runs:
+            for AlgoClass in (AStarExplorer, DStarLiteExplorer):
+                k_note = f" (k={scenario[1]})" if scenario is not None else ""
+                print(f"Running {AlgoClass.__name__}{k_note}...")
+                summary, log_path = _run(
+                    AlgoClass, wall_matrix, width, height,
+                    goals, maze_name, args.log_dir, scenario=scenario,
+                )
+                summaries.append(summary)
+                log_paths.append(log_path)
+                goal_status = "✓ REACHED" if summary["goal_reached"] else "✗ NOT REACHED"
+                print(f"  {goal_status} | final pos: {summary['final_position']} | "
+                      f"moves: {summary['total_moves']} | "
+                      f"replanning events: {summary['replanning_events']}")
 
     print("\n=== Summary ===")
     _print_table(summaries)
