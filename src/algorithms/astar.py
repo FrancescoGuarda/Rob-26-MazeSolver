@@ -356,8 +356,18 @@ class AStarExplorer(BaseAlgorithm):
                         new_path, n_exp, f_values, open_set, closed_set = self._a_star(
                             robot.position, set(remaining_goals), maze_map, h_new
                         )
-                        residual = h_new.get(robot.position, 0)
+                        logger.stop_plan_timer()
+
                         memory = len(open_set) + len(closed_set)
+                        # residual_distance is always the wall-aware BFS distance,
+                        # regardless of self._heuristic (see MetricsLogger schema
+                        # doc, §4.1): reuse h_new when it already is that map
+                        # (heuristic == "min_path"), else compute it explicitly.
+                        residual_map = (
+                            h_new if self._heuristic == "min_path"
+                            else self._compute_goal_heuristic(maze_map, remaining_goals)
+                        )
+                        residual = residual_map.get(robot.position, 0)
                         logger.log_replanning_event(
                             robot.position, n_exp, residual, memory
                         )

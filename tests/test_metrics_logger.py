@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+import time
 
 import pytest
 
@@ -97,6 +98,52 @@ def test_cost_ratio_zero_residual():
     assert logger.replanning_events[0]["cost_ratio"] is None
 
 
+def test_cost_ratio_none_for_infinite_residual():
+    """cost_ratio must be None (not 0.0) when residual_distance is +inf —
+    a 0.0 ratio would misleadingly read as 'near-zero cost' instead of
+    'distance unknown/unreachable'."""
+    logger = make_logger()
+    logger.start_plan_timer()
+    logger.log_replanning_event(
+        (0, 0), nodes_expanded=5, residual_distance=float('inf'), memory_occupancy=10
+    )
+    event = logger.replanning_events[0]
+    assert event["residual_distance"] == -1
+    assert event["cost_ratio"] is None
+
+
+def test_cost_ratio_none_for_sentinel_residual():
+    """The -1 sentinel itself (as would be re-fed from a stored record) must
+    also yield cost_ratio is None, not a negative ratio."""
+    logger = make_logger()
+    logger.start_plan_timer()
+    logger.log_replanning_event((0, 0), nodes_expanded=5, residual_distance=-1, memory_occupancy=10)
+    assert logger.replanning_events[0]["cost_ratio"] is None
+
+
+def test_stop_plan_timer_freezes_planning_time():
+    """stop_plan_timer() ends the timed window immediately; work performed
+    between it and log_replanning_event() must not inflate planning_time_s."""
+    logger = make_logger()
+    logger.start_plan_timer()
+    elapsed = logger.stop_plan_timer()
+    time.sleep(0.05)
+    logger.log_replanning_event((0, 0), nodes_expanded=1, residual_distance=1, memory_occupancy=1)
+    recorded = logger.replanning_events[0]["planning_time_s"]
+    assert recorded == pytest.approx(elapsed, abs=0.02)
+    assert recorded < 0.04
+
+
+def test_log_replanning_event_without_stop_measures_at_call_time():
+    """The older two-step start_plan_timer() -> log_replanning_event() form
+    (no explicit stop) must remain valid and measure at call time."""
+    logger = make_logger()
+    logger.start_plan_timer()
+    time.sleep(0.02)
+    logger.log_replanning_event((0, 0), nodes_expanded=1, residual_distance=1, memory_occupancy=1)
+    assert logger.replanning_events[0]["planning_time_s"] >= 0.02
+
+
 def test_plan_timer_reset_after_event():
     """A second log_replanning_event without start_plan_timer still produces a valid record."""
     logger = make_logger()
@@ -144,6 +191,42 @@ def test_export_json_contains_replanning_keys():
     for field in ("event_id", "position", "planning_time_s", "nodes_expanded",
                   "residual_distance", "cost_ratio", "memory_occupancy"):
         assert field in event, f"Missing event field: {field}"
+
+
+def test_export_json_compacts_matrix_rows_and_coordinate_pairs():
+    """wall_matrix/visit_matrix rows and position/cell coordinate pairs must
+    be written as single-line arrays, while the rest of the payload keeps
+    normal indent=2 formatting; the parsed values must be unaffected."""
+    logger = make_logger()
+    logger.start(); logger.stop()
+    logger.set_matrices([[0, 1], [2, 3]], [[1, 0], [0, 1]])
+    logger.start_plan_timer()
+    logger.log_replanning_event((3, 4), 2, 5, 6)
+    logger.set_scenario("mazes/txt/88us.txt", 1, [((7, 7), 0.0)])
+
+    with tempfile.TemporaryDirectory() as tmp:
+        path = logger.export_json(output_dir=tmp)
+        with open(path) as fh:
+            text = fh.read()
+        with open(path) as fh:
+            data = json.load(fh)
+
+    # Each matrix row and coordinate pair collapses to one line.
+    assert "[0, 1]" in text
+    assert "[2, 3]" in text
+    assert "[3, 4]" in text  # replanning_events[0].position
+    assert "[7, 7]" in text  # scenario.goals[0].cell
+
+    # No exploded (one-value-per-line) array remains for these fields.
+    assert '"wall_matrix": [\n    0,' not in text
+    assert '"position": [\n' not in text
+    assert '"cell": [\n' not in text
+
+    # Values round-trip exactly despite the formatting change.
+    assert data["wall_matrix"] == [[0, 1], [2, 3]]
+    assert data["visit_matrix"] == [[1, 0], [0, 1]]
+    assert data["replanning_events"][0]["position"] == [3, 4]
+    assert data["scenario"]["goals"][0]["cell"] == [7, 7]
 
 
 def test_export_json_zero_events():

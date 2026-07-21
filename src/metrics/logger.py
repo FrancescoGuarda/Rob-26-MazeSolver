@@ -13,6 +13,38 @@ import time
 from datetime import datetime
 
 
+def _compact_payload_arrays(payload: dict) -> tuple[dict, dict[str, str]]:
+    """Replace every wall_matrix/visit_matrix row and every position/cell
+    coordinate pair with a unique placeholder token.
+
+    Returns (payload_copy, tokens), where tokens maps each placeholder to the
+    compact JSON text that must replace it after
+    json.dumps(payload_copy, indent=2). Structural: driven by (parent key,
+    value shape) during a walk of the actual payload object, not by scanning
+    already-serialized text, so it cannot misfire on an unrelated digit
+    sequence inside some future string field.
+    """
+    tokens: dict[str, str] = {}
+
+    def token_for(value) -> str:
+        tok = f"@@COMPACT_{len(tokens)}@@"
+        tokens[tok] = json.dumps(value)
+        return tok
+
+    def walk(node, key) -> dict | list | str:
+        if key in ("wall_matrix", "visit_matrix") and isinstance(node, list):
+            return [token_for(row) for row in node]
+        if key in ("position", "cell") and isinstance(node, list):
+            return token_for(node)
+        if isinstance(node, dict):
+            return {k: walk(v, k) for k, v in node.items()}
+        if isinstance(node, list):
+            return [walk(v, key) for v in node]
+        return node
+
+    return walk(payload, None), tokens  # type: ignore[return-value]
+
+
 class MetricsLogger:
     """Collects and exports per-run algorithm performance metrics.
 
@@ -42,6 +74,7 @@ class MetricsLogger:
         # Replanning-event tracking (Phase 3 extension)
         self._replanning_events: list[dict] = []
         self._plan_timer_start: float | None = None
+        self._pending_planning_time: float | None = None
         self._scenario: dict | None = None
         self._goal_count: int | None = None
 
@@ -107,6 +140,25 @@ class MetricsLogger:
         """Record the start time of a planning / replanning call."""
         self._plan_timer_start = time.monotonic()
 
+    def stop_plan_timer(self) -> float:
+        """End the timed planning window now and return the elapsed seconds.
+
+        The elapsed time is cached for the next log_replanning_event() call,
+        so any diagnostic/display work performed between this call and
+        log_replanning_event() is excluded from planning_time_s. Calling
+        start_plan_timer() -> log_replanning_event() directly (without an
+        intervening stop_plan_timer()) remains valid: the timer is then read
+        at log_replanning_event() call time, as before.
+        """
+        elapsed = (
+            time.monotonic() - self._plan_timer_start
+            if self._plan_timer_start is not None
+            else 0.0
+        )
+        self._pending_planning_time = elapsed
+        self._plan_timer_start = None
+        return elapsed
+
     def log_replanning_event(
         self,
         position: tuple[int, int],
@@ -116,17 +168,23 @@ class MetricsLogger:
     ) -> None:
         """Append one replanning-event record.
 
-        Must be called after start_plan_timer() so that planning_time_s can be
-        computed.  cost_ratio is set to None when residual_distance == 0.
+        Must be called after start_plan_timer() (directly, or via an
+        intervening stop_plan_timer()) so that planning_time_s can be
+        computed.  cost_ratio is set to None when residual_distance is not a
+        finite positive number (covers 0 and +inf alike).
         """
-        planning_time = (
-            time.monotonic() - self._plan_timer_start
-            if self._plan_timer_start is not None
-            else 0.0
-        )
+        if self._pending_planning_time is not None:
+            planning_time = self._pending_planning_time
+        else:
+            planning_time = (
+                time.monotonic() - self._plan_timer_start
+                if self._plan_timer_start is not None
+                else 0.0
+            )
         cost_ratio: float | None = (
             nodes_expanded / residual_distance
-            if residual_distance and residual_distance > 0
+            if isinstance(residual_distance, (int, float))
+            and 0 < residual_distance < float('inf')
             else None
         )
         self._replanning_events.append({
@@ -139,6 +197,7 @@ class MetricsLogger:
             "memory_occupancy":  memory_occupancy,
         })
         self._plan_timer_start = None  # reset timer
+        self._pending_planning_time = None
 
     # ------------------------------------------------------------------
     # Computed metrics (read-only properties)
@@ -272,7 +331,12 @@ class MetricsLogger:
             "scenario": self._scenario,
         }
 
+        compacted, tokens = _compact_payload_arrays(payload)
+        text = json.dumps(compacted, indent=2)
+        for tok, compact_json in tokens.items():
+            text = text.replace(f'"{tok}"', compact_json)
+
         with open(filepath, 'w') as fh:
-            json.dump(payload, fh, indent=2)
+            fh.write(text)
 
         return filepath

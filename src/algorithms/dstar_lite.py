@@ -48,8 +48,12 @@ of those cells is reached (self._is_default_goal).
 GUI (MMS simulator; all calls are no-ops in headless mode)
 -----------------------------------------------------------
 * Cell text: "g-XXXr-YYY" (10-char budget); collapses to bare "inf" for a
-  trivial (untouched) cell where g = rhs = ∞. Kept live via set_text at every
-  g/rhs mutation site, independent of the colour redraw below.
+  trivial (untouched) cell where g = rhs = ∞. Every g/rhs mutation site marks
+  the cell dirty (self._dirty_text_cells) rather than calling set_text()
+  immediately; _flush_gui_text() performs the actual set_text() calls once
+  per GUI sync point, so the string formatting never falls inside a
+  start_plan_timer()/log_replanning_event(). Independent of the colour
+  redraw below.
 * _gui_show_search is the single entry point for colour, called once after
   every _compute_shortest_path() cycle completes (including the first),
   recoloring the whole board from live state under a strict, first-match-wins
@@ -200,6 +204,12 @@ class DStarLiteExplorer(BaseAlgorithm):
         # current cycle (self._reached_goals is declared by BaseAlgorithm).
         self._previously_expanded: set[tuple[int, int]] = set()
         self._expanded_this_cycle: set[tuple[int, int]] = set()
+        # Cells whose displayed text (g/rhs) is stale. _update_rhs() and
+        # _compute_shortest_path() only mark cells dirty here; the actual
+        # api.set_text()/_gui_cell_text() string formatting is deferred to
+        # _flush_gui_text(), so it never falls inside a timed planning
+        # window.
+        self._dirty_text_cells: set[tuple[int, int]] = set()
 
     # ------------------------------------------------------------------
     # D*-Lite internals
@@ -214,10 +224,14 @@ class DStarLiteExplorer(BaseAlgorithm):
         return (min_g_rhs + self._h(s) + self._km, min_g_rhs)
 
     def _update_rhs(self, u: tuple[int, int]) -> None:
-        """Recompute rhs(u) = min over passable neighbours n of (1 + g(n))."""
+        """Recompute rhs(u) = min over passable neighbours n of (1 + g(n)).
+
+        Marks u's displayed text stale instead of calling api.set_text()
+        directly — see self._dirty_text_cells / _flush_gui_text().
+        """
         if u in self._remaining_goal_set:
             self._rhs[u] = 0.0
-            self._api.set_text(u[0], u[1], self._gui_cell_text(u[0], u[1]))
+            self._dirty_text_cells.add(u)
             return
         best = _INF
         ux, uy = u
@@ -232,7 +246,7 @@ class DStarLiteExplorer(BaseAlgorithm):
             if val < best:
                 best = val
         self._rhs[u] = best
-        self._api.set_text(u[0], u[1], self._gui_cell_text(u[0], u[1]))
+        self._dirty_text_cells.add(u)
 
     def _update_vertex(self, u: tuple[int, int]) -> None:
         """Maintain U: insert/update/remove u depending on consistency."""
@@ -259,6 +273,21 @@ class DStarLiteExplorer(BaseAlgorithm):
         if g_val == _INF and r_val == _INF:
             return "inf"
         return f"g-{self._fmt3(g_val)}r-{self._fmt3(r_val)}"
+
+    def _flush_gui_text(self, api: BaseAPI) -> None:
+        """Write api.set_text() for every cell marked dirty since the last flush.
+
+        _update_rhs()/_compute_shortest_path() only record *which* cells need
+        a text refresh (self._dirty_text_cells); the actual string formatting
+        (_gui_cell_text()) and API call happen here instead, so this work
+        never falls inside a start_plan_timer()/log_replanning_event() window.
+        Call once after every _update_rhs()/_compute_shortest_path() sequence
+        that isn't itself followed by another such sequence before the next
+        GUI sync point — harmless to call with an empty dirty set.
+        """
+        for (x, y) in self._dirty_text_cells:
+            api.set_text(x, y, self._gui_cell_text(x, y))
+        self._dirty_text_cells = set()
 
     def _reconstruct_planned_path(self) -> list[tuple[int, int]]:
         """Greedy argmin-(1+g(n)) walk from s_start toward a goal, for display.
@@ -369,7 +398,7 @@ class DStarLiteExplorer(BaseAlgorithm):
                 nodes_expanded += 1
                 self._expanded_this_cycle.add(u)
 
-                self._api.set_text(u[0], u[1], self._gui_cell_text(u[0], u[1]))
+                self._dirty_text_cells.add(u)
 
                 ux, uy = u
                 for direction in Direction:
@@ -385,7 +414,7 @@ class DStarLiteExplorer(BaseAlgorithm):
                     new_val = 1.0 + self._g[u]
                     if new_val < self._rhs[v]:
                         self._rhs[v] = new_val
-                        self._api.set_text(v[0], v[1], self._gui_cell_text(v[0], v[1]))
+                        self._dirty_text_cells.add(v)
                         self._update_vertex(v)
 
             else:
@@ -396,7 +425,7 @@ class DStarLiteExplorer(BaseAlgorithm):
                 nodes_expanded += 1
                 self._expanded_this_cycle.add(u)
 
-                self._api.set_text(u[0], u[1], self._gui_cell_text(u[0], u[1]))
+                self._dirty_text_cells.add(u)
 
                 ux, uy = u
                 # Update u itself (g → ∞, may become inconsistent)
@@ -454,6 +483,7 @@ class DStarLiteExplorer(BaseAlgorithm):
         self._reached_goals = []
         self._previously_expanded = set()
         self._expanded_this_cycle = set()
+        self._dirty_text_cells = set()
 
         # rhs = 0 for all goal cells; insert into U
         for g in self._remaining_goal_set:
@@ -492,6 +522,7 @@ class DStarLiteExplorer(BaseAlgorithm):
 
         # Initial ComputeShortestPath.
         self._compute_shortest_path()
+        self._flush_gui_text(api)
         self._gui_show_search(api)
         self._previously_expanded |= self._expanded_this_cycle
 
@@ -543,6 +574,7 @@ class DStarLiteExplorer(BaseAlgorithm):
                 maze_map.mark_visit(robot.x, robot.y)
                 self._sense_and_update(maze_map, robot, api)
                 self._compute_shortest_path()
+                self._flush_gui_text(api)
                 self._gui_show_search(api)
                 self._previously_expanded |= self._expanded_this_cycle
                 continue
@@ -614,6 +646,7 @@ class DStarLiteExplorer(BaseAlgorithm):
 
                 # Replan to next goal (goal reaching is not a "replanning event")
                 self._compute_shortest_path()
+                self._flush_gui_text(api)
                 self._gui_show_search(api)
                 self._previously_expanded |= self._expanded_this_cycle
                 continue
@@ -625,13 +658,27 @@ class DStarLiteExplorer(BaseAlgorithm):
             if has_new:
                 logger.start_plan_timer()
                 n_exp = self._compute_shortest_path()
+                logger.stop_plan_timer()
+
+                self._flush_gui_text(api)
                 self._gui_show_search(api)
                 self._previously_expanded |= self._expanded_this_cycle
                 if n_exp > 0:
-                    h = self._compute_goal_heuristic(maze_map, list(self._remaining_goal_set))
-                    residual = h.get(robot.position, 0)
+                    # residual_distance is always the wall-aware BFS distance
+                    # from the current position to the nearest remaining goal
+                    # (see MetricsLogger schema doc, §4.1). self._g[s_start]
+                    # already *is* that value once _compute_shortest_path()
+                    # converges (self._s_start was set to robot.position right
+                    # after the move, above, and is not reassigned before this
+                    # point) — an O(1) read, versus recomputing it from scratch
+                    # via a full-maze BFS. Passed through un-truncated (not
+                    # int()-ed here) so MetricsLogger's own inf-safe handling
+                    # (the -1 sentinel) is what governs the unreachable case,
+                    # not an OverflowError from int(float('inf')) at this call
+                    # site.
+                    residual = self._g[self._s_start]
                     memory = self._memory_occupancy()
-                    logger.log_replanning_event(robot.position, n_exp, int(residual), memory)
+                    logger.log_replanning_event(robot.position, n_exp, residual, memory)
                     self._report_replan(logger.replanning_events[-1])
 
         self._gui_show_termination(api)

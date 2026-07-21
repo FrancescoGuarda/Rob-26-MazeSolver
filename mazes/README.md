@@ -42,7 +42,12 @@ For a maze to be valid in the simulator, it must satisfy:
 - Fully enclosed (perimeter walls on all sides)
 
 **Micromouse competition requirements (official mazes):**
-- No inaccessible locations (all cells reachable from start)
+- No inaccessible locations (all cells reachable from start) — this is also a
+  hard dependency of the metrics subsystem: `residual_distance` in exported
+  logs is only guaranteed finite because every maze in the corpus satisfies
+  full connectivity (enforced by `tools/filter_connected.py`). Any maze added
+  outside that tool must be run through it (or an equivalent connectivity
+  check) before use.
 - Exactly three starting walls (around the start position)
 - Only one entrance to the center goal area
 - Hollow center (center peg has no walls)
