@@ -69,6 +69,11 @@ ALGO_LOG_NAMES = {
     DStarLiteExplorer: "dstar_lite",
 }
 
+# Percentage/bar first, description after — tqdm's set_description() already
+# appends ": " to `desc` internally, so the template adds "| " (not ": |")
+# right after {desc} to avoid a doubled colon.
+BAR_FORMAT = "{percentage:3.0f}%|{bar}| {desc}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}{postfix}]"
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -239,17 +244,29 @@ def main() -> None:
         parser.error(f"no *.txt mazes found in {args.maze_dir}")
 
     total = len(maze_names) * len(GOAL_COUNTS) * len(ALGORITHMS)
+
+    print("=== run_batch: settings ===")
+    print(f"Maze directory : {args.maze_dir}  ({len(maze_names)} mazes found)")
+    print(f"Goal counts    : {', '.join(str(k) for k in GOAL_COUNTS)}")
+    print(f"Algorithms     : {', '.join(AlgoClass.__name__ for AlgoClass in ALGORITHMS)}")
+    print(f"Heuristic      : {HEURISTIC}")
+    print(f"Log directory  : {args.log_dir}")
+    print(f"Total runs     : {total}")
+    print()
+
+    batch_start = time.time()
     results: list[dict] = []
     failures: list[dict] = []
     live_table = _LiveTable()
     reached_count = 0
 
-    with tqdm(total=total, desc="run_batch", unit="run") as bar:
+    with tqdm(total=total, desc="run_batch", unit="run", bar_format=BAR_FORMAT) as bar:
         for maze_name in maze_names:
             maze_path = os.path.join(args.maze_dir, f"{maze_name}.txt")
             wall_matrix, width, height = parse_maze(maze_path)
 
             for k in GOAL_COUNTS:
+                bar.set_description(f"{maze_name} | goal={k}")
                 try:
                     goals, scenario = _resolve_goals(wall_matrix, width, height, k)
                 except ValueError as exc:
@@ -262,7 +279,6 @@ def main() -> None:
                     continue
 
                 for AlgoClass in ALGORITHMS:
-                    bar.set_description(f"{maze_name} | k={k} | {AlgoClass.__name__}")
                     try:
                         result = _run_one(
                             AlgoClass, wall_matrix, width, height,
@@ -278,17 +294,21 @@ def main() -> None:
                     bar.update(1)
                     bar.set_postfix(reached=f"{reached_count}/{len(results)}", failed=len(failures))
 
-            live_table.render(_summary_lines(results, failures))
+            live_lines = _summary_lines(results, failures)
+            live_lines.append(live_lines[1])  # closing rule, separates the table from the bar below
+            live_table.render(live_lines)
 
+    elapsed = time.time() - batch_start
     tqdm.write("\n=== Final summary ===")
     for line in _summary_lines(results, failures):
         tqdm.write(line)
     tqdm.write(f"Logs saved under: {args.log_dir}")
 
+    tqdm.write(f"\n=== Batch test completed in {elapsed:.1f}s ===")
     not_reached = [r for r in results if not r["goal_reached"]]
     if failures or not_reached:
         tqdm.write(
-            f"\n[FAIL] {len(failures)} combination(s) failed/skipped, "
+            f"[FAIL] {len(failures)} combination(s) failed/skipped, "
             f"{len(not_reached)} run(s) did not reach their goal."
         )
         sys.exit(1)
