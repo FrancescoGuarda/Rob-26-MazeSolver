@@ -13,10 +13,13 @@ Optional flags:
     --goals X1,Y1 X2,Y2   explicit goal list (default: maze centre),
                             applied to every maze
     -k/--k-goals N         goal-count threshold: for each maze, runs every
-                            scenario k=1..N, goals placed automatically via
-                            src.goal_placement.scenario_goals (k=1: classic
-                            micromouse centre goal; k>=2: detour placement).
-                            Mutually exclusive with --goals.
+                            scenario k=1..N. k=1 always means the classic
+                            default centre-area goal (goals=None) — the same
+                            convention used by experiments/run_batch.py —
+                            never a call to scenario_goals(..., 1); k>=2
+                            places goals automatically via
+                            src.goal_placement.scenario_goals (detour-index
+                            placement). Mutually exclusive with --goals.
     --log-dir PATH         override log output directory
 """
 from __future__ import annotations
@@ -164,9 +167,11 @@ def main() -> None:
     parser.add_argument(
         "-k", "--k-goals", type=int, default=None,
         help=(
-            "Goal-count threshold: run every scenario k=1..N per maze, goals "
-            "placed via src.goal_placement.scenario_goals (k=1: classic "
-            "micromouse centre goal; k>=2: detour-index placement). "
+            "Goal-count threshold: run every scenario k=1..N per maze. k=1 "
+            "always means the classic default centre-area goal (goals=None, "
+            "same convention as experiments/run_batch.py), never "
+            "scenario_goals(..., 1); k>=2 places goals automatically via "
+            "src.goal_placement.scenario_goals (detour-index placement). "
             "Mutually exclusive with --goals."
         ),
     )
@@ -200,16 +205,27 @@ def main() -> None:
         wall_matrix, width, height = parse_maze(maze_path)
         print(f"  Dimensions: {width}×{height}")
 
-        # Derive this maze's runs as (goals, scenario) pairs: one run for
-        # explicit/default goals, or a k=1..N sweep for --k-goals
-        runs: list[tuple[list[tuple[int, int]] | None,
-                         tuple[str, int, list[tuple[tuple[int, int], float]]] | None]] = []
+        # Derive this maze's runs as (goals, scenario, label) triples: one run
+        # for explicit/default goals, or a k=1..N sweep for --k-goals. k=1
+        # always means the classic default centre-area goal (goals=None,
+        # scenario=None) — the same convention as experiments/run_batch.py —
+        # never a call to scenario_goals(..., 1); k>=2 places goals via
+        # detour-index placement.
+        runs: list[tuple[
+            list[tuple[int, int]] | None,
+            tuple[str, int, list[tuple[tuple[int, int], float]]] | None,
+            str,
+        ]] = []
 
         if cli_goals is not None:
             print(f"  Goals: {cli_goals}")
-            runs.append((cli_goals, None))
+            runs.append((cli_goals, None, ""))
         elif args.k_goals is not None:
             for k in range(1, args.k_goals + 1):
+                if k == 1:
+                    print("  Goals (k=1): maze centre (default)")
+                    runs.append((None, None, "k=1"))
+                    continue
                 try:
                     pairs = scenario_goals(wall_matrix, width, height, (0, 0), k)
                 except ValueError as exc:
@@ -217,14 +233,14 @@ def main() -> None:
                 print(f"  Goals (k={k} scenario):")
                 for cell, detour in pairs:
                     print(f"    {cell}  detour {detour:.3f}")
-                runs.append(([cell for cell, _ in pairs], (maze_path, k, pairs)))
+                runs.append(([cell for cell, _ in pairs], (maze_path, k, pairs), f"k={k}"))
         else:
             print("  Goals: maze centre (default)")
-            runs.append((None, None))
+            runs.append((None, None, ""))
 
-        for goals, scenario in runs:
+        for goals, scenario, label in runs:
             for AlgoClass in (AStarExplorer, DStarLiteExplorer):
-                k_note = f" (k={scenario[1]})" if scenario is not None else ""
+                k_note = f" ({label})" if label else ""
                 print(f"Running {AlgoClass.__name__}{k_note}...")
                 summary, log_path = _run(
                     AlgoClass, wall_matrix, width, height,

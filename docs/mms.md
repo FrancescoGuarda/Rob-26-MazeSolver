@@ -85,7 +85,7 @@ On completion, `run.py` writes a JSON metrics log to `results/logs/<goal-count>/
 .venv/bin/python run.py --algo astar --auto-goals 2015japan -k 4
 ```
 
-**The goals are identical to the tool's.** Both paths call the same `src.goal_placement.scenario_goals()`, which is deterministic — no randomness, fixed `(y, x)` tie-break — so for a given maze, start cell and `k` the result cannot differ. `--auto-goals` is a convenience over the same placement, not a second implementation of it, and `tools/place_goals.py` remains the way to *inspect* a placement (it also prints the detour score behind each goal, which `run.py` discards). The `k = 1` special case carries over unchanged: one goal at the maze's centre cell, deliberately not the first goal of a `k ≥ 2` placement — see `tools/README.md` for the rule and its rationale.
+**The goals are identical to the tool's.** Both paths call the same `src.goal_placement.scenario_goals()`, which is deterministic — no randomness, fixed `(y, x)` tie-break — so for a given maze, start cell and `k` the result cannot differ. `--auto-goals` is a convenience over the same placement, not a second implementation of it, and `tools/place_goals.py` remains the way to *inspect* a placement (it also prints the detour score behind each goal, which `run.py` discards). `scenario_goals()` treats every `k ≥ 1` identically — `-k 1` places the single highest-detour cell, the same algorithm as any other `k` — see `tools/README.md` for the placement rule.
 
 **The start cell** is the robot's initial position (`(0, 0)`, the simulator convention), matching the default that `tools/place_goals.py` documents for `--start`.
 
@@ -104,7 +104,7 @@ error: --auto-goals: '/…/mazes/txt/2015japan.txt' is 16x16, but the simulator
 reports 8x8 — the maze loaded in the GUI is not the one named here
 ```
 
-Note the limit of this check: it only catches mismatches **of different size**. Two distinct 16×16 mazes are indistinguishable over the protocol, so if you load a different maze of the same dimensions the run will proceed with goals placed for the wrong layout. Update the flag when you change maze. Any other failure — missing or malformed file, an unreachable `k = 1` centre cell, a maze with no reachable candidate cells — also aborts with an `error: --auto-goals: …` message on stderr rather than falling back silently.
+Note the limit of this check: it only catches mismatches **of different size**. Two distinct 16×16 mazes are indistinguishable over the protocol, so if you load a different maze of the same dimensions the run will proceed with goals placed for the wrong layout. Update the flag when you change maze. Any other failure — missing or malformed file, or a maze with no reachable candidate cells for the requested `k` — also aborts with an `error: --auto-goals: …` message on stderr rather than falling back silently.
 
 **Example configuration:**
 

@@ -28,11 +28,19 @@ See each script's module docstring for full options.
 
 ## Goal placement (`src/goal_placement.py`, inspected via `tools/place_goals.py`)
 
-Placement is **automated**: headless runs (e.g. `experiments/01_experiment.py -k N`)
-call `src.goal_placement.scenario_goals()` directly at load time, right after
-parsing the maze. Placement is deterministic and takes milliseconds, so there
-is no pre-step to run and no file to keep in sync — the same maze and k
-always produce the same goals.
+Placement is **automated**: headless runs (e.g. `experiments/01_experiment.py -k N`,
+`experiments/run_batch.py`) call `src.goal_placement.scenario_goals()` directly
+at load time, right after parsing the maze, for every k ≥ 2. Placement is
+deterministic and takes milliseconds, so there is no pre-step to run and no
+file to keep in sync — the same maze and k always produce the same goals.
+
+`scenario_goals()` itself treats every k ≥ 1 identically (see "Placement
+algorithm" below — there is no special case for k = 1 inside the module).
+By convention, both `01_experiment.py` and `run_batch.py` still choose to
+never call it for a "1 goal" run: they treat that case as the classic
+default centre-*area* goal (`goals=None`, resolved by `BaseAlgorithm`
+itself), not as an automated single-cell placement. That is a decision
+made by those two callers, not a rule of this module.
 
 `tools/place_goals.py` is a thin CLI over that module, kept around only so
 you can inspect where goals land in a maze and why (it prints the detour
@@ -72,21 +80,18 @@ Input: maze, start cell (default `(0, 0)`, the simulator convention), K
 goals (default 4).
 
 1. BFS from start → `detour(start, c)` for every free cell.
-2. **Goal 1** = argmax of `detour(start, c)`.
+2. **Goal 1** = argmax of `detour(start, c)`. This is also the entire
+   result for `k = 1` — there is no special case; `k = 1` is simply the
+   first step of the same algorithm, so it is identical to the first goal
+   a `k ≥ 2` placement would choose.
 3. **Goal k (k ≥ 2)**: BFS from start and from **every** previously placed
    goal. For each candidate cell `c` (free, reachable, not the start, not
    an already-placed goal):
    `score(c) = min(detour(ref, c) for ref in {start, goal_1, ..., goal_{k-1}})`.
    Goal k = argmax of `score(c)`.
-4. Scenarios with k ≥ 2 are **nested**: level L = the first L goals.
-5. **Scenario rule for k = 1**: the detour search above is skipped
-   entirely. The single goal is the maze's **centre cell**,
-   `(width // 2 - 1, height // 2 - 1)` — the classic micromouse scenario —
-   provided it is in bounds, not the start, and reachable; its real detour
-   value is still computed and reported. **This k = 1 goal is deliberately
-   NOT the same cell a k ≥ 2 placement would choose first** — each k is its
-   own independent scenario, not one continuously nested sequence from
-   k = 1 upward. Nesting only holds among k ≥ 2 scenarios.
+4. Scenarios are **nested** for every `k ≥ 1`: level L = the first L
+   goals — a `k = 1` scenario's goal is exactly the goal a `k ≥ 2`
+   scenario would choose first.
 
 No randomness anywhere. Ties break deterministically to the lowest
 `(row, col)` = lowest `(y, x)`, where row 0 is the **bottom** row (MMS
@@ -155,12 +160,7 @@ These are deliberate design choices, kept simple on purpose:
   apparent distance**: a goal can maximize the detour ratio while being
   both far by Manhattan and much farther by path, rather than being a
   nearby-looking trap.
-- **(b)** **The k = 2 scenario does not contain the k = 1 goal.** Since
-  k = 1 is the fixed centre cell rather than the global max-detour cell,
-  the k ≥ 2 detour placements form their own nested family starting from
-  the most deceptive cell in the maze — they do not extend the k = 1
-  scenario. Only k = 2, 3, 4, ... are nested among themselves.
-- **(c)** **The ratio amplifies small Manhattan distances**, so in
+- **(b)** **The ratio amplifies small Manhattan distances**, so in
   practice the tool tends to favor nearby-looking traps over cells that
   are merely far and mildly deceptive: a cell 1 step away (Manhattan) with
   a 7-step real path scores 7.0, while a cell 20 steps away with a

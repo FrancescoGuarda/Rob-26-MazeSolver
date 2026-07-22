@@ -77,13 +77,15 @@ def test_detour_always_at_least_one(parsed):
 
 
 # ---------------------------------------------------------------------------
-# Nesting (k >= 2)
+# Nesting (all k >= 1: k=1 is not special-cased, so it nests too)
 # ---------------------------------------------------------------------------
 
-def test_nesting_k_geq_2(parsed):
+def test_nesting_from_k1(parsed):
     wall_matrix, width, height = parsed
+    goals_1 = scenario_goals(wall_matrix, width, height, (0, 0), 1)
     goals_2 = scenario_goals(wall_matrix, width, height, (0, 0), 2)
     goals_3 = scenario_goals(wall_matrix, width, height, (0, 0), 3)
+    assert goals_2[:1] == goals_1
     assert goals_3[:2] == goals_2
 
 
@@ -101,20 +103,20 @@ def test_place_goals_never_repeats_or_returns_start(parsed):
 
 
 # ---------------------------------------------------------------------------
-# k = 1: classic micromouse centre goal
+# k = 1: same detour-maximization algorithm as k >= 2, no special case
 # ---------------------------------------------------------------------------
 
-def test_k1_returns_centre_cell(parsed):
+def test_k1_matches_first_goal_of_larger_scenario(parsed):
+    """k=1 is not special-cased: its single goal equals goal 1 of any k>=2 scenario."""
     wall_matrix, width, height = parsed
-    goals = scenario_goals(wall_matrix, width, height, (0, 0), 1)
-    assert len(goals) == 1
-    cell, detour = goals[0]
-    assert cell == (width // 2 - 1, height // 2 - 1)
-    assert cell == (7, 7)  # maze_test.txt is 16x16
-    assert detour >= 1.0
+    goals_1 = scenario_goals(wall_matrix, width, height, (0, 0), 1)
+    goals_4 = scenario_goals(wall_matrix, width, height, (0, 0), 4)
+    assert len(goals_1) == 1
+    assert goals_1 == goals_4[:1]
+    assert goals_1[0][1] >= 1.0  # detour
 
 
-def test_k1_centre_matches_manual_computation(parsed):
+def test_k1_matches_manual_detour_computation(parsed):
     wall_matrix, width, height = parsed
     from src.goal_placement import bfs_distance_map, manhattan
 
@@ -125,29 +127,19 @@ def test_k1_centre_matches_manual_computation(parsed):
     assert detour == pytest.approx(expected)
 
 
-def test_k1_raises_when_centre_is_start():
-    # 2x2 open maze: centre = (2//2-1, 2//2-1) = (0, 0) = start.
-    wall_matrix = _open_maze(2, 2)
-    with pytest.raises(ValueError, match="coincides with start"):
-        scenario_goals(wall_matrix, 2, 2, (0, 0), 1)
+def test_k1_never_returns_start(parsed):
+    wall_matrix, width, height = parsed
+    goals = scenario_goals(wall_matrix, width, height, (0, 0), 1)
+    assert goals[0][0] != (0, 0)
 
 
-def test_k1_raises_when_centre_unreachable():
-    width, height = 8, 8
-    centre = (width // 2 - 1, height // 2 - 1)
-    wall_matrix = _sealed_cell_maze(width, height, centre)
-    with pytest.raises(ValueError, match="unreachable"):
-        scenario_goals(wall_matrix, width, height, (0, 0), 1)
-
-
-def test_k1_raises_on_out_of_bounds_would_not_happen_for_valid_dims():
-    # Sanity: for any width/height >= 2, the centre cell is always in bounds
-    # by construction (width // 2 - 1 in [0, width-2], same for height).
-    for w in (2, 3, 4, 16):
-        for h in (2, 3, 4, 16):
-            cx, cy = w // 2 - 1, h // 2 - 1
-            assert 0 <= cx < w
-            assert 0 <= cy < h
+def test_k1_returns_empty_when_start_is_isolated():
+    # Start walled off on all four sides: no reachable candidate cells at
+    # all, so place_goals() places zero goals (a stderr warning, not a
+    # ValueError) and scenario_goals() passes that empty result through.
+    width, height = 4, 4
+    wall_matrix = _sealed_cell_maze(width, height, (0, 0))
+    assert scenario_goals(wall_matrix, width, height, (0, 0), 1) == []
 
 
 def test_scenario_goals_rejects_k_less_than_one(parsed):

@@ -18,18 +18,24 @@ bound on a 4-connected grid. See tools/README.md ("References") for
 citations (Barthélemy 2011; Gastner & Newman 2006).
 
 Placement algorithm (deterministic, no randomness):
-  1. Goal 1 = argmax over free cells of detour(start, c).
+  1. Goal 1 = argmax over free cells of detour(start, c). This is also the
+     entire result for k = 1 — there is no special case; k = 1 is simply
+     the first step of the same algorithm.
   2. Goal k (k >= 2) = argmax of min(detour(ref, c) for ref in {start, goal_1,
      ..., goal_{k-1}}) — every previously placed goal is used as a reference,
      not just the last one.
   3. Ties break to the lowest (row, col) = lowest (y, x), y=0 at bottom.
-  4. Scenarios (k >= 2) are nested: level L = the first L goals.
+  4. Scenarios are nested for every k >= 1: level L = the first L goals, so
+     a k = 1 scenario's goal is exactly the goal a k >= 2 scenario would
+     choose first.
 
-Scenario rule (``scenario_goals``): k = 1 is the classic micromouse
-scenario — the goal is fixed at the maze's centre cell, not chosen by
-detour search — and k >= 2 uses the placement algorithm above. This means
-the k = 1 goal is deliberately NOT the first element of the k >= 2 nested
-sequence.
+``scenario_goals`` is a thin wrapper over ``place_goals()``: for every
+k >= 1 it returns the first k placement steps as (cell, detour) pairs.
+(Some callers — e.g. experiments/01_experiment.py, experiments/run_batch.py
+— choose to treat "1 goal" as a caller-level convention meaning the
+classic default centre-area goal, `goals=None`, and skip calling this
+function for k = 1 entirely; that is a convention of those callers, not
+something this module special-cases.)
 """
 from __future__ import annotations
 
@@ -233,13 +239,11 @@ def scenario_goals(
 ) -> list[tuple[Cell, float]]:
     """Goals for the k-goal scenario of a maze, as (cell, detour) pairs.
 
-    k == 1: classic micromouse scenario — the fixed centre cell
-        ``(width // 2 - 1, height // 2 - 1)``, with its real detour value
-        (BFS distance from start / Manhattan distance). Deliberately NOT
-        the same as the first element place_goals() would choose for
-        k >= 2 — see module docstring.
-    k >= 2: detour-index placement via place_goals(); detour is the
-        placement score (the min-detour across all active references).
+    Thin wrapper over place_goals(): every k >= 1 uses the same
+    detour-maximization algorithm — there is no special case for k = 1, so
+    a k = 1 scenario's goal is exactly the goal a k >= 2 scenario would
+    choose first (detour is the placement score: the min-detour across all
+    active references, which for goal 1 is simply detour(start, goal)).
 
     Args:
         wall_matrix: wall_matrix[y][x] N/E/S/W bitmask (fully-known maze).
@@ -250,28 +254,15 @@ def scenario_goals(
 
     Returns:
         List of (cell, detour) pairs, one per goal, in placement order.
-        May be shorter than k if place_goals() runs out of candidates.
+        May be shorter than k (with a warning printed to stderr by
+        place_goals()) if there aren't enough reachable candidate cells;
+        empty if there are none at all (e.g. an isolated start cell).
 
     Raises:
-        ValueError: k < 1; or (k == 1) the centre cell is out of bounds,
-            coincides with start, or is unreachable from start.
+        ValueError: k < 1.
     """
     if k < 1:
         raise ValueError(f"k must be >= 1, got {k}")
-
-    if k == 1:
-        centre: Cell = (width // 2 - 1, height // 2 - 1)
-        if not (0 <= centre[0] < width and 0 <= centre[1] < height):
-            raise ValueError(
-                f"fixed goal {centre} out of bounds for {width}x{height} maze"
-            )
-        if centre == start:
-            raise ValueError(f"fixed goal {centre} coincides with start {start}")
-        dist_start = bfs_distance_map(wall_matrix, width, height, start)
-        if math.isinf(dist_start[centre[1]][centre[0]]):
-            raise ValueError(f"fixed goal {centre} is unreachable from start {start}")
-        detour = dist_start[centre[1]][centre[0]] / manhattan(start, centre)
-        return [(centre, detour)]
 
     steps = place_goals(wall_matrix, width, height, start, k)
     return [(s.goal, s.score) for s in steps]

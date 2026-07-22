@@ -18,18 +18,15 @@ Such deceptive cells defeat a greedy planner with a partial map, so the
 detour index is the difficulty proxy for goal placement.
 
 Placement algorithm (deterministic, no randomness):
-  1. Goal 1 = argmax over free cells of detour(start, c).
+  1. Goal 1 = argmax over free cells of detour(start, c). This is also the
+     entire result for -k 1 — there is no special case; k=1 is simply the
+     first step of the same algorithm, so it matches the first goal of any
+     k>=2 placement.
   2. Goal k (k >= 2) = argmax of min(detour(ref, c) for ref in {start, goal_1,
      ..., goal_{k-1}}) — every previously placed goal is used as a reference,
      not just the last one.
   3. Ties break to the lowest (row, col) = lowest (y, x), y=0 at bottom.
-  4. Scenarios (k >= 2) are nested: level L = the first L goals.
-
-Special case: with -k 1 the detour search is skipped and the single goal
-is fixed at the maze's centre cell (classic micromouse scenario), provided
-it is in bounds and reachable from the start. This k=1 goal is deliberately
-NOT the same as the first goal of a k>=2 placement — see
-src/goal_placement.py for the full rule.
+  4. Scenarios are nested for every k >= 1: level L = the first L goals.
 
 Usage:
     python3 tools/place_goals.py 2015japan
@@ -43,7 +40,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.goal_placement import place_goals, scenario_goals, Cell
+from src.goal_placement import place_goals, Cell
 from src.parser.maze_parser import parse_maze
 
 _MAZE_DIR = Path("mazes/txt")
@@ -84,16 +81,6 @@ def main() -> None:
         parser.error(f"start {start} out of bounds for {width}x{height} maze")
 
     print(f"Maze: {maze_path} ({width}x{height}), start {start}")
-
-    if args.n_goals == 1:
-        try:
-            goals = scenario_goals(wall_matrix, width, height, start, 1)
-        except ValueError as exc:
-            sys.exit(f"error: {exc}")
-        goal, detour = goals[0]
-        print(f"  Goal 1 (classic centre): {goal}  detour {detour:.3f}")
-        print(f"\n  GUI command: --goal {goal[0]} {goal[1]}")
-        return
 
     steps = place_goals(wall_matrix, width, height, start, args.n_goals)
     if not steps:
