@@ -64,7 +64,7 @@ class AStarExplorer(BaseAlgorithm):
     LEGEND = [
         ("b  (Blue)",      "Expanded (closed list)"),
         ("R  (Dark Red)",  "Open list"),
-        ("c  (Cyan)",      "Planned path / traversed path"),
+        ("c  (Cyan)",      "Planned path"),
         ("G  (Dark Green)", "Goal cell, not yet reached"),
         ("g  (Green)",     "Goal cell, reached"),
         ("f-XXX",          "f-value of an expanded/open cell"),
