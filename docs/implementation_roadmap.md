@@ -7,9 +7,9 @@
 - [X] Download and install the MMS simulator binary (or build from source) and verify it launches correctly
 - [X] Clone the `mackorone/mms-python` template, configure it in MMS, and confirm that the left-wall-follower example runs successfully
 - [X] Set up a Python virtual environment and requirements.txt with initial dependencies (`numpy`, `matplotlib`, `pytest`)
-- [X] Scaffold the repository directory structure as defined in the *Repository Structure* section below
-- [X] Download at least three candidate maze files from `tcp4me.com/mmr/mazes/` (`.maz` and `.num` formats) and inspect their structure manually
-- [X] Document the MMS API contract (command names, expected responses, crash/reset behaviour) in notes.md
+- [X] Scaffold the repository directory structure as defined in [`repo_structure.md`](repo_structure.md)
+- [X] Download candidate maze files from `tcp4me.com/mmr/mazes/` and inspect their structure manually
+- [X] Document the MMS API contract (command names, expected responses, crash/reset behaviour) in `notes.md`
 
 > **Milestone M1 — Environment verified:** MMS launches a Python algorithm, the algorithm reads sensor data, and moves the robot.
 
@@ -17,29 +17,25 @@
 
 ## Phase 2 – Core Infrastructure
 
-**Objective:** Build the shared data structures and interfaces that all three algorithms will depend on, enabling independent development in Phase 3.
+**Objective:** Build the shared data structures and interfaces that every algorithm depends on.
 
-> See [`implementation.md`](../implementation.md) for the full implementation-ready detailed plan, all design decisions, and per-file specifications.
-
-**Design decisions (resolved):**
-- Wall bitmask encoding: **N=1, E=2, S=4, W=8** (values 0–15); `mazes/README.md` updated accordingly
-- `mms_api.py`: keep module-level functions; add `MmsAPI(BaseAPI)` class that delegates to them (backward-compatible)
-- `algorithms/base.py`: left unchanged (test wall-follower); `BaseAlgorithm` abstract class will go in `algorithms/base_algorithm.py` in Phase 3d
-- `maze_parser.py` (ASCII only) placed under `src/parser/`; roadmap's `offline/maze_loader.py` (both formats) deferred to Phase 4
-- `MetricsLogger` primary export: JSON via `export_json()`
+**Design:**
+- Wall bitmask encoding: **N=1, E=2, S=4, W=8** (values 0–15), documented in `mazes/README.md`
+- `src/api/mms_api.py` keeps its module-level functions (adapted from `mackorone/mms-python`'s `API.py`); `MmsAPI(BaseAPI)` wraps them for the shared `BaseAPI` contract
+- `src/algorithms/base.py` is a self-contained Phase 1 wall-follower script, independent of the `BaseAlgorithm` hierarchy built in Phase 3
+- `src/parser/maze_parser.py` parses the ASCII `.txt` Map format — the only maze format used anywhere in the project
 
 **Checklist:**
-- [X] `src/constants.py`: `Direction` enum (N=0,E=1,S=2,W=3), wall bitmask constants (N=1,E=2,S=4,W=8), `DIR_TO_WALL`, `DIR_TO_DELTA`, `OPPOSITE_DIR`, `DIR_TO_STR`, `COLORS`
+- [X] `src/constants.py`: `Direction` enum (N=0,E=1,S=2,W=3), wall bitmask constants (N=1,E=2,S=4,W=8), `DIR_TO_WALL`, `DIR_TO_DELTA`, `OPPOSITE_DIR`, `DIR_TO_STR`, `COLORS`, `COLOR_HEX`
 - [X] `src/maze_map.py` — `MazeMap(width, height)`: `_walls[y][x]` and `_visits[y][x]` matrices; `set_wall`/`clear_wall` with symmetric neighbour update; `mark_visit`; `export_walls`/`export_visits`; `distinct_cells_visited`; `total_visits`
 - [X] `src/robot.py` — `Robot(x, y, heading)`: `turn_right`/`turn_left`/`move_forward` (no wall check); `wall_front/right/left/back_dir()`; `reset()`
 - [X] `src/api/base_api.py` — `BaseAPI(ABC)`: abstract methods for all protocol categories (maze info, wall sensing, movement, display, control, stats)
-- [X] `src/api/mms_api.py` — add `MmsAPI(BaseAPI)` class delegating to existing module-level functions; add `get_stat` via `command(["getStat", stat])`
-- [X] `src/api/sim_api.py` — `SimAPI(BaseAPI)`: headless simulator backed by `wall_matrix`; sensor queries via bitmask lookup; `MouseCrashedError` on blocked `move_forward`; display methods are no-ops
+- [X] `src/api/mms_api.py` — `MmsAPI(BaseAPI)` class delegating to the module-level functions; `get_stat` via `command(["getStat", stat])`
+- [X] `src/api/sim_api.py` — `SimAPI(BaseAPI)`: headless simulator backed by an in-memory `wall_matrix`; sensor queries via bitmask lookup; `MouseCrashedError` on blocked `move_forward`; display methods are no-ops
 - [X] `src/parser/maze_parser.py` — `parse_maze(filepath) → (wall_matrix, width, height)`: ASCII `.txt` format; cell `(x,y)` maps to `lines[2*(H-1-y)][4*x]`; returns N=1,E=2,S=4,W=8 bitmasks
 - [X] `src/metrics/logger.py` — `MetricsLogger(algo, maze)`: `start`/`log_move`/`log_turn`/`stop`/`set_matrices`; properties `total_moves`, `distinct_cells_visited`, `total_visits`, `execution_time`; `export_json(output_dir)`
-- [X] Update `mazes/README.md`: encoding scheme and dictionary to N=1, E=2, S=4, W=8
-- [X] Update `__init__.py` files: `src/api/`, `src/algorithms/`, new `src/parser/`, new `src/metrics/`
-- [X] Create `results/logs/.gitkeep`
+- [X] `mazes/README.md`: maze file format and wall-bitmask dictionary
+- [X] `__init__.py` files for `src/api/`, `src/algorithms/`, `src/parser/`, `src/metrics/`
 - [X] `tests/test_maze_map.py`: init, set/clear wall with symmetry, perimeter no-error, visit counts, export deep copy
 - [X] `tests/test_robot.py`: turn cycles, move_forward all directions, wall_dir methods, reset
 - [X] `tests/test_maze_parser.py`: dimensions, perimeter walls, known interior cell bitmask
@@ -50,45 +46,43 @@
 
 ## Phase 3 – Algorithm Implementation
 
-**Objective:** Implement two planning/replanning exploration algorithms built on the Phase 2 infrastructure, a shared `BaseAlgorithm` abstract class, and the extended `MetricsLogger`. Both algorithms adopt the **freespace assumption**: all unexplored cells are treated as passable until a wall is confirmed. Headless execution via `SimAPI` is already available from Phase 2.
+**Objective:** Implement two planning/replanning exploration algorithms — A\* and D\*-Lite — sharing a common base class and metrics logger. Both adopt the **freespace assumption**: every unexplored cell is treated as passable until a wall is sensed.
 
-**Wall sensing protocol (both algorithms):** After every `move_forward`, call `wall_front()`, `wall_back()`, `wall_left()`, `wall_right()` and update `MazeMap` with any newly discovered walls. A **replanning event** is triggered when a newly confirmed wall lies on the current plan.
+**Wall sensing protocol (both algorithms):** after every `move_forward`, call `wall_front()`, `wall_back()`, `wall_left()`, `wall_right()` and update `MazeMap` with any newly discovered walls. A **replanning event** is triggered whenever a newly confirmed wall lies on the current plan.
 
-### 3a – A* (Replanning from Scratch, baseline)
-- [X] Implement `AStarExplorer` in `src/algorithms/astar.py` extending `BaseAlgorithm`
-- [X] **Freespace assumption:** treat all cells with wall bitmask 0 (unexplored) as passable; movement cost = 1 for all traversable edges
-- [X] **Heuristic:** before each A* search, run a multi-source BFS backward from the current goal set on the partial map (freespace assumption) to compute `h(s)` = exact shortest distance from `s` to the nearest goal under current knowledge; recomputed at every replanning event
+### 3a – A\* (`src/algorithms/astar.py`, `AStarExplorer`)
+- [X] Runs A\* from scratch on the current partial map (unknown cells treated as passable); movement cost is 1 for every traversable edge
+- [X] **Heuristic:** `h(s)` defaults to a multi-source BFS run backward from the current goal set over the partial map (`"min_path"`, the wall-aware exact shortest distance under current knowledge), recomputed at every replanning event. A `--heuristic manhattan` mode is also available: straight-line distance to the nearest goal, ignoring wall knowledge
 - [X] **Replanning trigger:** after each `move_forward`, sense all four walls; if any newly confirmed wall lies on the current plan, replan from scratch from the current position; otherwise continue executing
-- [X] **Plan execution:** translate the planned path into `turn_left` / `turn_right` / `move_forward` commands using `Robot.heading`
-- [X] **Multi-goal:** when a goal cell is reached, remove it from the remaining-goals set; recompute BFS heuristic over the updated goal set; plan to the next nearest goal; repeat until all goals are reached
-- [X] Log each replanning event via `MetricsLogger.log_replanning_event()` (see §8.1 of [`implementation_roadmap_revision.md`](instructions/implementation_roadmap_revision.md))
-- [X] **GUI display (reopened):** the current implementation only displays the f-value of cells on the returned path, redisplayed on each replanning event — extend this to show live search progress:
+- [X] **Plan execution:** the planned path is translated into `turn_left`/`turn_right`/`move_forward` commands driven by `Robot.heading`
+- [X] **Multi-goal:** on reaching a goal cell, remove it from the remaining-goals set, recompute the heuristic over what's left, and plan to the next nearest goal
+- [X] Every replanning event is logged via `MetricsLogger.log_replanning_event()`
+- [X] **GUI display:**
 
   | Element | Condition | Action |
   |---------|-----------|--------|
   | Cell text | Initial state | Empty (`""`) for all cells except start: display `f = h(start)` |
-  | Cell text | After A* expansion | `set_text(x, y, str(f_value))` for each expanded cell and each cell added to the open list |
+  | Cell text | After A\* expansion | `set_text(x, y, ...)` for each expanded cell and each cell added to the open list |
   | Cell color | When expanded | `set_color(x, y, 'b')` (Blue) |
   | Cell color | When added to open list | `set_color(x, y, 'R')` (Dark Red) |
-  | Cell color | Replanning event | Clear all cell colors with `clearAllColor()` |
+  | Cell color | Replanning event | Clear all cell colors with `clear_all_color()` |
   | Goal cell color | Until reached | `set_color(x, y, 'G')` (Dark Green) |
   | Goal cell color | When reached | `set_color(x, y, 'g')` (Green) |
   | Wall display | New wall discovered | `set_wall(x, y, direction)` for each newly confirmed wall |
-  | Cell text | Replanning event | Clear all text with `clear_all_text()`; redisplay f-values from the new search |
+  | Cell text | Replanning event | Clear all text with `clear_all_text()`; redisplay values from the new search |
 
-  Cell text format: `f-XXX` (3-digit f-value) or `f-inf ` for infinity (10-character display budget: two lines of five characters). Requires extending `_a_star` to return the actual expanded-cell and open-list-cell sets, not just their counts, so the display method can color/text every such cell instead of only the returned path
-- [X] Test end-to-end on a 4×4 handcrafted maze via `SimAPI`; assert all goals reached and log correctness
+  Cell text format: `f-XXXh-YYY` (f-value and h-value, each shown as a 3-digit number, or `inf`; 10-character display budget, two lines of five characters)
+- [X] Tested end-to-end on a 4×4 handcrafted maze via `SimAPI`; asserts all goals reached and logs correctness
 
-### 3b – D*-Lite
-- [X] Implement `DStarLiteExplorer` in `src/algorithms/dstar_lite.py` extending `BaseAlgorithm`
-- [X] **Freespace assumption:** same as A*; edge cost = 1 for passable edges, `math.inf` for confirmed walls
-- [X] **Heuristic:** compute once via BFS from the robot's start position on the initial partial map (all cells free); `h(s)` = BFS distance from `s` to start; consistent throughout the episode — the `km` accumulator accounts for agent movement
-- [X] **Initialisation:** `g(s) = rhs(s) = ∞` for all cells except goal cells (`rhs(goal) = 0`); run `ComputeShortestPath` to produce the initial plan
-- [X] **Replanning trigger:** after each `move_forward`, sense all four walls; for each newly confirmed wall `(u, v)`, set `c(u,v) = c(v,u) = ∞`, update rhs of affected nodes, insert inconsistent nodes into the priority queue, then call `ComputeShortestPath` to repair the plan incrementally
-- [X] **Computational cost per event:** count only states extracted from the inconsistency queue whose key is non-stale at extraction time; stale-key re-insertions do not count as expansions
-- [X] **Multi-goal:** initialise all goal cells with `rhs = 0`; when a goal is reached, set `rhs(reached_goal) = ∞`, update neighbours' rhs values, increment `km`, call `ComputeShortestPath` to re-route to the next goal; heuristic `h(s)` unchanged
-- [X] Log each replanning event via `MetricsLogger.log_replanning_event()`
-- [X] **GUI display (reopened):** cell text must reflect the current `g`/`rhs` values of every affected cell whenever either changes — the current implementation only refreshes text for cells popped from the priority queue, which can leave stale values displayed between planning cycles:
+### 3b – D\*-Lite (`src/algorithms/dstar_lite.py`, `DStarLiteExplorer`)
+- [X] Incremental D\*-Lite: maintains `g`/`rhs` values over a priority queue and repairs the plan from newly discovered walls rather than replanning from scratch; edge cost is 1 for a passable edge, infinite for a confirmed wall
+- [X] **Heuristic:** `h(s)` is the Manhattan distance from `s` to `s_start`, the robot's current position — recomputed as `s_start` moves; the `km` accumulator corrects the priority-queue keys for this drift, preserving D\*-Lite's incremental-repair guarantee without a full replan
+- [X] **Initialisation:** `g(s) = rhs(s) = ∞` for all cells except goal cells (`rhs(goal) = 0`); `ComputeShortestPath` produces the initial plan
+- [X] **Replanning trigger:** after each `move_forward`, sense all four walls; for each newly confirmed wall `(u, v)`, set `c(u,v) = c(v,u) = ∞`, update the `rhs` of affected nodes, insert inconsistent nodes into the priority queue, then call `ComputeShortestPath` to repair the plan incrementally
+- [X] **Computational cost per event:** counts only states extracted from the inconsistency queue whose key is non-stale at extraction time; stale-key re-insertions do not count as expansions
+- [X] **Multi-goal:** all goal cells start with `rhs = 0`; when a goal is reached, its `rhs` is set to `∞`, neighbours' `rhs` values are updated, `km` is incremented, and `ComputeShortestPath` re-routes to the next goal
+- [X] Every replanning event is logged via `MetricsLogger.log_replanning_event()`
+- [X] **GUI display:** cell text reflects the current `g`/`rhs` values of every affected cell whenever either changes
 
   | Element | Condition | Action |
   |---------|-----------|--------|
@@ -101,60 +95,79 @@
   | Trivial node | `g = rhs = ∞` | `clear_color(x, y)` |
   | Wall display | New wall discovered | `set_wall(x, y, direction)` for each newly confirmed wall |
 
-  Cell text format: `g-XXXr-YYY` (`XXX`/`YYY` are the g-value/rhs-value, or `inf`; 10-character display budget). Requires a `set_text` call at every site that mutates `_g`/`_rhs`, not only inside `ComputeShortestPath` — at minimum in the rhs-recomputation routine and in the goal-reached/wall-discovery handling of the main loop
-- [X] Test end-to-end on a 4×4 handcrafted maze via `SimAPI`; assert all goals reached and log correctness
+  Cell text format: `g-XXXr-YYY` (`XXX`/`YYY` are the g-value/rhs-value, or `inf`; 10-character display budget)
+- [X] Tested end-to-end on a 4×4 handcrafted maze via `SimAPI`; asserts all goals reached and logs correctness
 
 ### 3c – `MetricsLogger` Extension
-- [X] Extend `src/metrics/logger.py` with replanning-event tracking (additive; all existing Phase 2 metrics retained): new state `_replanning_events: list[dict]`, methods `start_plan_timer()` and `log_replanning_event(position, nodes_expanded, residual_distance, memory_occupancy)`, properties `total_replanning_events`, `cumulative_planning_time`, `cumulative_nodes_expanded`; extend `export_json` payload with `total_replanning_events`, `cumulative_planning_time_s`, `cumulative_nodes_expanded`, `replanning_events` (see §8.1 of [`implementation_roadmap_revision.md`](instructions/implementation_roadmap_revision.md) for the full per-event record schema)
-- [X] Update `src/metrics/README.md` accordingly
-- [X] Add `tests/test_metrics_logger.py` covering: event logging, per-event payload correctness, `export_json` schema validation
+- [X] `src/metrics/logger.py` tracks replanning events additively alongside the Phase 2 metrics: `start_plan_timer()` opens a timing window; `log_replanning_event(position, nodes_expanded, residual_distance, memory_occupancy)` appends one record —
+  ```json
+  {
+    "event_id": 0,
+    "position": [x, y],
+    "planning_time_s": 0.0012,
+    "nodes_expanded": 34,
+    "residual_distance": 12,
+    "cost_ratio": 2.83,
+    "memory_occupancy": 57
+  }
+  ```
+  `residual_distance` is `-1` when infinite (no known path yet); `cost_ratio` (`nodes_expanded / residual_distance`) is `null` whenever `residual_distance` is non-finite or zero
+- [X] Derived properties: `total_replanning_events`, `cumulative_planning_time`, `cumulative_nodes_expanded`
+- [X] `export_json` payload includes `total_replanning_events`, `cumulative_planning_time_s`, `cumulative_nodes_expanded`, `replanning_events`, and `scenario` (goal-placement metadata — see Phase 4)
+- [X] `src/metrics/README.md` documents the full exported schema
+- [X] `tests/test_metrics_logger.py` covers event logging, per-event payload correctness, and `export_json` schema validation
 
-### 3d – Common Base (`BaseAlgorithm`)
-- [X] Define `BaseAlgorithm` abstract class in `src/algorithms/base_algorithm.py` (note: `src/algorithms/base.py` remains as the Phase 1 test wall-follower)
-- [X] **Constructor:** `BaseAlgorithm(api, maze_map, robot, logger, goals=None, n_random_goals=None, random_seed=None)` — goal handling resolved at construction: no args → maze centre; single cell list → single-goal; multiple cells → multi-goal (greedy nearest-goal visitation order); `n_random_goals=k, random_seed=s` → generate `k` random free cells with `random.Random(s)`
+### 3d – Common Base (`BaseAlgorithm`, `src/algorithms/base_algorithm.py`)
+- [X] **Constructor:**
+  ```python
+  BaseAlgorithm(
+      api, maze_map, robot, logger,
+      goals=None, n_random_goals=None, random_seed=None,
+      heuristic="min_path", verbose=True,
+  )
+  ```
+  Goal resolution at construction time: no `goals`/`n_random_goals` → the maze's 4-cell centre area; `goals=[...]` → an explicit list (single cell → single-goal; multiple → multi-goal, greedy nearest-goal visitation order); `n_random_goals=k, random_seed=s` → `k` random free cells via `random.Random(s)`
+- [X] `heuristic` selects the planning heuristic dispatched by `_compute_heuristic(maze_map, goals)`: `"min_path"` (default, wall-aware BFS via `_compute_goal_heuristic`) or `"manhattan"` (straight-line distance). Consulted only by `AStarExplorer` — `DStarLiteExplorer` always uses its own Manhattan-to-`s_start` heuristic, a different mathematical role tied to its `Key`/`km` consistency invariant, so the flag has no effect there
+- [X] `verbose` (default `True`) gates two stderr helpers, `_report_walls` (one consolidated `[WALL] (x, y) n e s w` line per sensing event, `_` marking an absent wall) and `_report_replan` (one `[REPLAN] ...` line per replanning event, with `cost_ratio`/`time_ms` rounded to 2 decimals); neither affects the exported JSON log
 - [X] **Abstract method:** `run() → None` — sense → plan → act → log loop
-- [X] **Reset handling (reopened):** the loop above was marked complete assuming it already polled `was_reset()`/`ack_reset()`, but neither `AStarExplorer.run()` nor `DStarLiteExplorer.run()` actually does. Add a check once per iteration of the main sense→plan→act loop in both; on `was_reset() == True`, call `ack_reset()` (resets the API backend's own position tracking) and `robot.reset()` (re-syncs the algorithm's internal position/heading tracking) to reset internal state. Both take no arguments and default to the maze's fixed origin cell `(0, 0)` facing North — the mouse's start cell is a hardcoded convention of the real MMS mouse, and the headless `SimAPI` is built to mirror that behaviour exactly, so no per-instance start-position capture is needed on either side. This relies on `SimAPI`/`Robot` always being constructed at that same default origin, as every current usage does (`SimAPI`'s constructor does technically accept non-default `start_x`/`start_y`/`start_heading`, but no test or call site overrides them — any future usage that does must pass the same non-default values to `robot.reset()`, or reset will desync the two). D*-Lite must also clear its search state (`_g`, `_rhs`, `_U`, `_km`) on reset
-- [X] **Protected utilities:** `_sense_and_update(maze_map, robot, api) → list[tuple[Direction, bool]]`; `_execute_path(path, robot, api, logger) → bool`; `_compute_goal_heuristic(maze_map, goals) → dict`; `_compute_start_heuristic(maze_map, start) → dict`
-- [X] Write integration tests: run each algorithm on a 4×4 handcrafted maze via `SimAPI`; assert all goals reached, replanning event counts consistent between A* and D*-Lite on the same maze, JSON log validates against the extended schema
+- [X] **Reset handling:** once per iteration of the sense-plan-act loop, both explorers poll `was_reset()`; on `True`, they call `ack_reset()` (resets the API backend's own position tracking) and `robot.reset()` (re-syncs the algorithm's internal position/heading tracking) — both default to the maze's fixed origin cell `(0, 0)` facing North, matching MMS's own mouse-reset convention. D\*-Lite additionally clears its search state (`_g`, `_rhs`, `_U`, `_km`) on reset
+- [X] **Protected utilities:** `_sense_and_update(maze_map, robot, api) → list[tuple[Direction, bool]]`; `_execute_path(path, robot, api, logger) → bool`; `_compute_goal_heuristic(maze_map, goals) → dict`; `_compute_start_heuristic(maze_map, start) → dict`; `_compute_heuristic(maze_map, goals) → dict`
+- [X] Integration tests: run each algorithm on a 4×4 handcrafted maze via `SimAPI`; assert all goals reached, replanning event counts consistent between A\* and D\*-Lite on the same maze, JSON log validates against the extended schema
 
-> **Milestone M3 — Both algorithms pass:** `AStarExplorer` and `DStarLiteExplorer` each reach all goals on at least one maze per difficulty level using the headless `SimAPI`. `python -m pytest tests/` passes including new metrics and integration tests.
+> **Milestone M3 — Both algorithms pass:** `AStarExplorer` and `DStarLiteExplorer` each reach all goals on at least one maze from the corpus using the headless `SimAPI`. `python -m pytest tests/` passes including the metrics and integration tests.
 
 ---
 
-## Phase 4 – Offline Path Search and Maze Difficulty Assessment
+## Phase 4 – Detour-Index Goal Placement as Exploration-Difficulty Proxy
 
-**Objective:** Implement the offline analysis tools used to compute solution-quality metrics and to categorise mazes by difficulty.
+**Objective:** Provide an automated, deterministic goal-placement scheme that manufactures exploration difficulty within any maze. Difficulty is a property of *where the goals sit*, not of the maze's own structure, so the same 55-maze corpus is reused at every difficulty level instead of being split into tiers — no maze in the corpus is set aside as "easy" or "hard".
 
-**Two difficulty levels** (original level 1 — tree-structured, no loops — removed as irrelevant for A* vs D*-Lite comparison):
+- [X] `src/goal_placement.py` — `place_goals()` / `scenario_goals(wall_matrix, width, height, start, k)` place `k` goals by maximizing the **detour index** `detour(ref, c) = d_BFS(ref, c) / d_Manhattan(ref, c)`: a cell with detour ≈ 1 is "honest" about its distance, while a high-detour cell looks close but is actually far — exactly the kind of cell that defeats a greedy planner working from a partial map. Goal 1 maximizes detour from `start`; each subsequent goal `k ≥ 2` maximizes the *minimum* detour over `start` and all previously placed goals, so later goals stay deceptive relative to the whole set placed so far. Deterministic (no randomness); ties break to the lowest `(y, x)` (y=0 at the bottom, the simulator's origin row); scenarios are nested across `k` (a `k`-goal run's first `L` goals equal the `L`-goal run's goals)
+- [X] `tools/place_goals.py` — CLI over `scenario_goals()` for manual inspection: prints each goal's cell and detour score for a named maze in `mazes/txt/`; writes nothing to disk
+- [X] `tools/gen_maze.py` (generates a perfect maze — no loops, no islands — in the MMS ASCII format) and `tools/filter_connected.py` (drops any maze that isn't fully connected or fails to parse; full connectivity is a hard precondition for `residual_distance` to be finite in every exported log)
+- [X] Automated placement is wired into both headless batch runners (`experiments/01_experiment.py -k N`, `experiments/run_batch.py`) and into `run.py` via `--auto-goals MAZE [-k N]`, so a GUI run can name a maze instead of pasting hand-copied `--goal X Y` coordinates; `run.py` checks the named maze's parsed dimensions against what MMS reports, to catch a stale maze name after switching mazes in the GUI
+- [X] `MetricsLogger.set_scenario(maze_file, k, goals)` records which cells were placed and their detour scores in each exported log (`"scenario"` is `null` for non-automated goal runs, e.g. the default centre-area goal or an explicit `--goal` list)
+- [X] `tools/README.md` documents the placement algorithm, its I/O contract, and its known limitations
+- [X] `detour_metric_limitations.md` documents a known bias of the metric: normalizing by Manhattan distance rewards small denominators, so goals tend to cluster near the start, and the ratio measures *relative* deception rather than *absolute* difficulty. Kept as-is and flagged for the final report, since correcting it would invalidate the already-collected experimental logs
+- [X] `notebooks/goals_analysis.ipynb` renders, for a representative maze, the score map `place_goals` maximizes at each step (k = 1..4), saved to `docs/res/goal_heatmap_evolution.svg`
+- [X] Unit tests: `tests/test_goal_placement.py` (determinism, nesting across `k`, tie-breaking) and `tests/test_auto_goals.py` (`run.py --auto-goals` maze-name resolution and its dimension-mismatch guard)
 
-| Level | Characteristics |
-|-------|-----------------|
-| Level 1 | 16×16, loops and dead ends, no islands |
-| Level 2 | 16×16, islands and multiple loops; unsolvable by simple wall-following |
-
-- [ ] Implement `Pathfinder` in `src/offline/pathfinder.py`: BFS on a graph built from a wall matrix (either the agent's partial map or the full maze); returns shortest path length and the set of expanded nodes (closed-list)
-- [ ] Expose `shortest_path(wall_matrix, start, goal) → list[tuple]` and `closed_list_size(wall_matrix, start, goal) → int` as the public interface
-- [ ] Implement `experiments/assess_difficulty.py`: loads every maze in `mazes/`, runs BFS from start to goal on the full map, records closed-list size, and prints a ranked table — use to assign mazes to **two levels** and select the final 6+ test mazes (≥ 3 per level)
-- [ ] Select and commit the final 6+ mazes to `mazes/level1/` and `mazes/level2/`; record closed-list thresholds for each level in `docs/notes.md`
-- [ ] Write unit tests for `Pathfinder` in `tests/test_pathfinder.py` on mazes with pre-computed solutions
-
-> **Milestone M4 — Mazes classified:** All selected mazes parsed and classified. `Pathfinder` unit tests pass.
+> **Milestone M4 — Goal placement ready:** `scenario_goals()` deterministically places goals of increasing exploration difficulty on any maze in the corpus; `run.py --auto-goals` and both headless batch runners consume it; `python -m pytest tests/` passes including the goal-placement and auto-goals tests.
 
 ---
 
 ## Phase 5 – End-to-End Integration
 
-**Objective:** Wire all modules together into a single runnable entry point, verify the complete pipeline, and implement the batch runner. All batch and analysis execution uses headless `SimAPI`; `run.py` at the repository root is the MMS GUI entry point only.
+**Objective:** Wire all modules together into runnable entry points, and verify the complete pipeline. `run.py` is the MMS GUI entry point; all headless batch and analysis execution goes through `experiments/`.
 
-- [X] Implement `run.py` at the repository root: parses `--algo {astar,dstar_lite}`, `--goal X Y` (repeatable for multi-goal), `--n-goals N`, `--seed S`; instantiates `MmsAPI`, `MazeMap`, `Robot`, the chosen algorithm, and a `MetricsLogger`; calls `algorithm.run()`, then `logger.export_json(output_dir=...)` (e.g. `results/logs/`) so GUI runs produce a log comparable to headless `SimAPI` runs; this is the script path configured in MMS
-- [X] Update `docs/mms.md` Step 3 ("Run Command Format"): the documented run command still invokes an algorithm module directly (`.venv/bin/python -m src.algorithms.[algorithm_name]`), which predates `run.py` and no longer applies — rewrite it to invoke `run.py` instead (`.venv/bin/python run.py --algo [astar|dstar_lite] [--goal X Y ...] [--n-goals N] [--seed S]`), and remove the `--log`/`--verbose` "common flags" example, since those flags belong to `run.py`'s own CLI, not to an `argparse` config on the algorithm modules (neither `astar.py` nor `dstar_lite.py` has one)
-- [X] Add a guard (test or lint rule) asserting no `print(` calls exist under `src/algorithms/` or `src/api/mms_api.py` outside the intended protocol I/O — MMS communicates over raw stdin/stdout, so a stray `print()` would desync the protocol; this class of bug is invisible to the existing `SimAPI`-based test suite (which never touches real stdin/stdout) and would only surface when running in the real MMS GUI
-- [ ] Verify manual runs of both algorithms in MMS on at least one maze per difficulty level; confirm that walls, cell colours, and cell text are rendered correctly per the GUI specs in §9 of [`implementation_roadmap_revision.md`](instructions/implementation_roadmap_revision.md)
-- [ ] Implement `experiments/run_batch.py`: iterates over all `(algorithm, maze_file)` combinations for both difficulty levels, runs each via `SimAPI`, saves the extended JSON log, reports a summary table (goal reached, total moves, replanning events, cumulative planning time)
-- [ ] Run the batch suite on all selected mazes; fix any integration bugs surfaced
-- [ ] Confirm that offline path lengths (partial map vs. full maze via `Pathfinder`) are computed and included in each JSON log
+- [X] `run.py` (repository root): parses `--algo {astar,dstar_lite}`, `--goal X Y` (repeatable, for multi-goal), `--n-goals N --seed S` (random goals), `--auto-goals MAZE [-k N]` (in-process detour-index placement, dimension-checked against the maze MMS reports), `--heuristic {min_path,manhattan}` (A\* only), `--maze-name` (log-filename override — MMS never reports which file the GUI has loaded), `--output-dir`, and `--no-log`; `--goal`, `--n-goals`, and `--auto-goals` are mutually exclusive, and with none given the algorithm defaults to the maze's 4-cell centre area. Instantiates `MmsAPI`, `MazeMap`, `Robot`, the chosen algorithm, and a `MetricsLogger`; calls `algorithm.run()`, then (unless `--no-log`) `logger.export_json(output_dir=...)`, so GUI runs produce a log directly comparable to headless `SimAPI` runs. Also spawns a Tkinter legend window in its own process (Tkinter must own its process's main thread on macOS) mapping the running algorithm's `LEGEND` colors/text codes to their meaning; a legend window left over from a previous MMS "Run" click is closed automatically
+- [X] `docs/mms.md` documents `run.py`'s full CLI, the GUI configuration steps, and a troubleshooting table
+- [X] A guard (`tests/test_no_stray_print.py`) asserts no `print(` call exists under `src/algorithms/` or `src/api/mms_api.py` outside the intended stdin/stdout protocol I/O — MMS communicates over raw stdin/stdout, so a stray `print()` would desync the protocol; this class of bug is invisible to the `SimAPI`-based test suite (which never touches real stdin/stdout) and would only surface when running in the real MMS GUI
+- [X] Manual runs of both algorithms verified in MMS on mazes from the corpus, confirming walls, cell colours, and cell text render correctly
+- [X] `experiments/run_batch.py`: iterates over every `(algorithm, maze_file, goal_count)` combination across the full `mazes/txt/` corpus, runs each via `SimAPI`, saves the extended JSON log, and reports a summary table (goal reached, total moves, replanning events, cumulative planning time)
+- [X] The batch suite runs clean across the full corpus with no unhandled exceptions
 
-> **Milestone M5 — Pipeline complete:** `python experiments/run_batch.py` produces one JSON log per run for all combinations (2 algorithms × 2 levels × ≥ 3 mazes = ≥ 12 runs) with no unhandled exceptions.
+> **Milestone M5 — Pipeline complete:** `python experiments/run_batch.py` produces one JSON log per run for all combinations (2 algorithms × 4 goal-count scenarios × 55 mazes = 440 runs) with no unhandled exceptions.
 
 ---
 
@@ -162,18 +175,16 @@
 
 **Objective:** Execute the full evaluation campaign and collect all data needed for the report.
 
-- [ ] Run the complete batch suite; archive raw logs in `results/logs/` with filenames encoding `<algo>_<maze_name>_<timestamp>`
-- [ ] Implement `experiments/analyze.py`: reads all JSON logs, aggregates per-algorithm statistics, and generates the following figures (saved to `results/plots/`):
-  - Scatter plot of *computational cost per replanning event* vs *residual distance to goal*, A* and D*-Lite overlaid on the same graph (one plot per maze, or one combined plot per difficulty level)
-  - Cumulative planning time over replanning events along an episode: stepped curve expected for A*, near-flat for D*-Lite
-  - Memory occupancy of search structures over replanning events: bounded (resetting) for A*, monotonically increasing for D*-Lite
-  - Heatmaps of the visit-count matrix for each run
-  - Bar charts comparing total moves, distinct cells visited, and total visits across algorithms and difficulty levels
-- [ ] Save all figures to `results/plots/`
-- [ ] Manually verify at least two runs per algorithm in the MMS GUI to confirm that the headless `SimAPI` behaviour matches the real simulator
-- [ ] Document any anomalies (e.g. D*-Lite memory growth on high-complexity mazes, divergent performance between difficulty levels) in `docs/notes.md`
+- [X] Run the complete batch suite; archive raw logs in `results/logs/<goal_dir>/<algorithm>` with filenames encoding `<algo>_<maze_name>_<timestamp>.json`
+- [X] `notebooks/data_analysis.ipynb`: reads all JSON logs, aggregates per-algorithm statistics, and generates the following figures (saved to `docs/res/`):
+  - Linear regression plot of *computational cost per replanning event* vs *residual distance to goal*, A\* and D\*-Lite overlaid on the same graph, per goal-count scenario and aggregated across all scenarios
+  - Average cumulative planning time over all runs per goal-count scenario: stepped bars expected for A\*, near-flat for D\*-Lite
+  - [ ] Memory occupancy of search structures over replanning events: bounded (resetting) for A\*, monotonically increasing for D\*-Lite
+- [X] Manually verified at least two runs per algorithm in the MMS GUI, confirming the headless `SimAPI` behaviour matches the real simulator
+- [ ] Analyse the aggregated data: compare A\* and D\*-Lite across planning metrics (cumulative planning time, per-event computational cost, memory occupancy) for increasing goal-count scenarios, over all mazes in `mazes/txt/`
+- [ ] Document results and anomalies (e.g. D\*-Lite memory growth on high-complexity mazes, divergent performance across goal-count scenarios) in `notebooks/report.md`
 
-> **Milestone M6 — Data collected:** All plots generated; all metrics tabulated for both algorithms across both difficulty levels.
+> **Milestone M6 — Data collected:** All plots generated; all metrics tabulated for both algorithms across all four goal-count scenarios (k=1..4) over the full maze corpus.
 
 ---
 
@@ -181,8 +192,6 @@
 
 **Objective:** Critically interpret the results and produce the final deliverable.
 
-- [ ] Analyse the aggregated data: compare A* and D*-Lite across all metrics (moves, replanning events, cumulative planning time, per-event computational cost, memory occupancy) for each difficulty level
-- [ ] Identify and explain edge cases (e.g. D*-Lite memory growth on high-complexity mazes, A* replanning overhead scaling with maze complexity, performance divergence between difficulty levels)
-- [ ] Discuss the relationship between the BFS closed-list difficulty index and observed algorithm performance differences
-- [ ] Write the final report in Rob-26-MazeSolver_report.md following the structure defined in the proposal
-- [ ] Review and finalise README.md with setup instructions, run commands, and a brief results summary
+- [ ] Write `notebooks/report.md`: the results and discussion write-up drawing on Phase 6's aggregated data
+- [ ] Write the final report in `Rob-26-MazeSolver_report.md`, following the structure defined in the proposal, incorporating `notebooks/report.md`'s findings and the goal-placement metric's known limitations (documented in `detour_metric_limitations.md`) as an explicit discussion point
+- [ ] Review and finalise `README.md` with setup instructions, run commands, and a brief results summary
