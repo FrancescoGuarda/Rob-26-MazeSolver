@@ -1,11 +1,11 @@
 ---
-documentclass: book
+documentclass: article
 classoption:
   - 11pt
   - a4paper
   - oneside
-geometry: "top=3cm, bottom=3cm, left=3cm, right=3cm"
-linestretch: 1.0
+geometry: "top=2cm, bottom=2cm, left=2cm, right=2cm"
+linestretch: 1.08
 numbersections: true
 header-includes:
     - \usepackage[ruled,vlined,linesnumbered]{algorithm2e}
@@ -51,5 +51,6 @@ header-includes:
 \end{titlepage}
 
 \tableofcontents
+\clearpage
 
 # Introduction
