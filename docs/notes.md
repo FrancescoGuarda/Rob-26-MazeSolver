@@ -2,8 +2,8 @@
 A running module must be implemented in which it is possible to choose from a set of mazes and algorithms to run the simulation with mms maze solver simulator. 
 
 **Materiale di riferimento**:
-- art. 1 [Micromouse 3D simulator with dynamics capability: a Unity environment approach](articles/s42452-021-04239-7.pdf)
-- art. 2 [Optimizing Tremaux Algorithm in Micromouse Using Potential Values](articles/7_Sanjaya_Vol3_No2.pdf)
+- art. 1 [Micromouse 3D simulator with dynamics capability: a Unity environment approach]([articles/s42452-021-04239-7.pdf](https://link.springer.com/article/10.1007/s42452-021-04239-7))
+- art. 2 [Optimizing Tremaux Algorithm in Micromouse Using Potential Values]([articles/7_Sanjaya_Vol3_No2.pdf](https://www.researchgate.net/publication/361212084_International_Journal_of_Advanced_Engineering_Optimizing_Tremaux_Algorithm_in_Micromouse_Using_Potential_Values))
 - video [Virtual Micromouse Maze Mapping and Solving Demonstration](https://www.youtube.com/watch?v=6y4nrnfZ1k0)
 - video [Micromouse Maze Simulator - 2018 Japan Halfsize(32x32)](https://www.youtube.com/watch?v=-r8a8aPRYAQ)
 - video [Micromouse Maze simulation](https://www.youtube.com/watch?v=0YId4SPJrWo)
