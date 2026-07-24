@@ -154,3 +154,72 @@ Own page, full bibliographic entries (not just the short in-text form used above
 - **D\*-Lite:** S. Koenig and M. Likhachev, "D\* Lite," *Proc. AAAI/IAAI*, 476–483, 2002; and S. Koenig and M. Likhachev, "Fast Replanning for Navigation in Unknown Terrain," *IEEE Transactions on Robotics*, 21(3), 354–363, 2005.
 - **Detour index / route factor:** M. Barthélemy, "Spatial Networks," *Physics Reports*, 499(1–3), 1–101, 2011; M. T. Gastner and M. E. J. Newman, "The Spatial Structure of Networks," *European Physical Journal B*, 49(2), 247–252, 2006.
 - **Rob-26-MazeSolver repository:** F. Guarda and A. Moro, *Rob-26-MazeSolver*, v1.0.0, MIT License, GitHub (2024). *(entry not yet present in `CITATIONS.bib` — add it there when drafting.)*
+
+# Rob-26-MazeSolver_report draft prompt 
+
+**Task**: Draft the body of docs/Rob-26-MazeSolver_report.md (Rob-26-MazeSolver project).
+
+The file already has its YAML front matter, title page, and table of
+contents scaffolded (pandoc→LaTeX: 11pt, a4paper, 1.08 line stretch,
+single column, 2cm margins) — don't touch those. Write only the body:
+Introduction, Background, Methodology, Experimental Evaluation,
+Conclusions and Future Work.
+
+Primary context, read in this order:
+1. docs/final_report_outline.md — the blueprint: section/subsection
+   structure, what each covers, every figure/table to produce (by
+   content, not filename), the page budget (~5 pages body, hard limit),
+   and the reference list. Follow it section by section.
+2. docs/implementation_roadmap.md — what was actually built, phase by
+   phase. Source of technical truth (heuristics, replanning triggers,
+   multi-goal handling) — don't invent detail beyond what it describes.
+3. docs/repo_structure.md — codebase map, for locating anything the
+   outline/roadmap references but doesn't fully explain.
+4. notebooks/report.md — the results write-up with actual experimental
+   findings and numbers. If it doesn't exist yet, produce it first (see
+   below) — it's the source of truth for every number in §4.
+
+Before drafting §4 (Experimental Evaluation):
+- If notebooks/report.md doesn't exist: read notebooks/data_analysis.ipynb
+  and notebooks/goals_analysis.ipynb, verify their headline claims
+  directly against results/logs/*/*/*.json (don't trust the notebooks'
+  own inline markdown commentary — some of it is stale relative to the
+  actual figures), and write it up per the outline's §4 subsections.
+- Two figures don't exist yet: F1 (annotated MMS GUI screenshot, §2) and
+  F6 (memory-occupancy plot, §4.5). Produce them, or mark them
+  `[FIGURE PENDING]` in the draft rather than silently dropping them.
+
+Consult as needed for depth (pull specific facts, don't summarize wholesale):
+src/algorithms/README.md, src/api/README.md, src/metrics/README.md,
+tools/README.md (detour-index algorithm), docs/detour_metric_limitations.md
+(for §5 limitations), docs/mms.md, CITATIONS.bib (add entries the
+outline's References section needs, e.g. the repo self-citation, rather
+than inventing formatting).
+
+Constraints:
+- 5-page hard limit on the body; respect the outline's per-section budget
+  — trim prose before dropping a required figure/table.
+- A*/D*-Lite comparison is central; the four supporting contributions
+  (common interface, headless execution, multi-goal, detour index) are
+  woven into Methodology/Evaluation, not standalone sections.
+- No implementation detail beyond what's needed to understand a
+  contribution or result (no CLI flags, file layout, GUI color codes).
+- Every quantitative claim must come from results/logs/ or the notebooks
+  directly, not from memory.
+
+---
+
+**Task:** Draft `Rob-26-MazeSolver_report.md` using the project documentation and source code as the authoritative context.
+
+Use the following documents as the **primary sources**:
+
+* `implementation_roadmap.md` — definitive overview of the implemented project and its final architecture;
+* `repo_structure.md` — repository organization and component responsibilities;
+* `notebooks/report.md` — experimental methodology, results, analyses, figures, and tables;
+* `final_report_outline.md` — authoritative structure and content blueprint for the report.
+
+Complement these with any additional project files necessary to accurately describe the implementation, methodology, and contributions.
+
+Write a concise, technically accurate, and well-structured report that follows the outline while emphasizing the project's main contributions, methodology, experimental evaluation, and conclusions. Ensure consistency with the implementation and experimental results, avoid inventing unsupported details, and reference project components where appropriate.
+
+The resulting `Rob-26-MazeSolver_report.md` should be a polished, self-contained final report suitable for direct conversion into the project deliverable.
