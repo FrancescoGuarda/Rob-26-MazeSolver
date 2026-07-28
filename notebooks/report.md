@@ -22,7 +22,7 @@ newly confirmed wall lies on the plan currently being executed.
 | | **A\*** | **D\*-Lite** |
 |---|---|---|
 | Strategy | Replans from scratch on the current partial map at every event | Repairs the existing plan incrementally from the changed edges |
-| Heuristic | Wall-aware exact distance to the nearest remaining goal under current knowledge, recomputed per event | Manhattan distance to the robot's current position, with a key offset correcting for the moving start |
+| Heuristic | Straight-line Manhattan distance to the nearest remaining goal, ignoring wall knowledge | Manhattan distance from a state to the robot's current position, with a key offset correcting for the moving start |
 | State between events | Discarded | Retained |
 | Multi-goal handling | Goal removed from the remaining set on arrival, heuristic recomputed | All goals seeded simultaneously; a reached goal is retired and the plan re-routed |
 
