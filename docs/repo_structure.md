@@ -150,7 +150,7 @@ Generated run logs, gitignored (not committed) to avoid bloating the repository 
 ### `/experiments/`
 Headless (`SimAPI`) batch runners; not imported as library code.
 
-- **`01_experiment.py`** — Runs both algorithms over a configurable maze list (default: every maze in `mazes/txt/`); `--goals X,Y ...` applies an explicit goal list to every maze, or `-k N` sweeps goal-count scenarios `k=1..N` per maze (`k=1` is always the default centre-area goal by this script's convention; `k≥2` uses `scenario_goals`). Prints a summary table and exports logs.
+- **`01_experiment.py`** — Runs both algorithms over a configurable maze list (default: every maze in `mazes/txt/`); `--goals X,Y ...` applies an explicit goal list to every maze, or `-k N` sweeps goal-count scenarios `k=1..N` per maze, every `k` placed automatically via `scenario_goals` (detour-index placement). Prints a summary table and exports logs.
 - **`run_batch.py`** — Full-corpus batch test: both algorithms × every maze in `mazes/txt/` × the four goal-count scenarios (1/2/3/4) = up to 440 runs, with `verbose=False` to avoid flooding stderr. Live `tqdm` progress bar plus an in-place running-average summary table; exits non-zero if any run fails or misses its goal.
 
 ### `/tools/`

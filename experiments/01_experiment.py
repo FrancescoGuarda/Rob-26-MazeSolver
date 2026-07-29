@@ -13,11 +13,7 @@ Optional flags:
     --goals X1,Y1 X2,Y2   explicit goal list (default: maze centre),
                             applied to every maze
     -k/--k-goals N         goal-count threshold: for each maze, runs every
-                            scenario k=1..N. k=1 always means the classic
-                            default centre-area goal (goals=None) — the same
-                            convention used by experiments/run_batch.py —
-                            never a call to scenario_goals(..., 1); k>=2
-                            places goals automatically via
+                            scenario k=1..N, goals placed automatically via
                             src.goal_placement.scenario_goals (detour-index
                             placement). Mutually exclusive with --goals.
     --log-dir PATH         override log output directory
@@ -167,12 +163,9 @@ def main() -> None:
     parser.add_argument(
         "-k", "--k-goals", type=int, default=None,
         help=(
-            "Goal-count threshold: run every scenario k=1..N per maze. k=1 "
-            "always means the classic default centre-area goal (goals=None, "
-            "same convention as experiments/run_batch.py), never "
-            "scenario_goals(..., 1); k>=2 places goals automatically via "
-            "src.goal_placement.scenario_goals (detour-index placement). "
-            "Mutually exclusive with --goals."
+            "Goal-count threshold: run every scenario k=1..N per maze, goals "
+            "placed automatically via src.goal_placement.scenario_goals "
+            "(detour-index placement). Mutually exclusive with --goals."
         ),
     )
     parser.add_argument("--log-dir", default=LOG_DIR, help=f"Log output directory (default: {LOG_DIR})")
@@ -206,11 +199,8 @@ def main() -> None:
         print(f"  Dimensions: {width}×{height}")
 
         # Derive this maze's runs as (goals, scenario, label) triples: one run
-        # for explicit/default goals, or a k=1..N sweep for --k-goals. k=1
-        # always means the classic default centre-area goal (goals=None,
-        # scenario=None) — the same convention as experiments/run_batch.py —
-        # never a call to scenario_goals(..., 1); k>=2 places goals via
-        # detour-index placement.
+        # for explicit/default goals, or a k=1..N sweep for --k-goals, every
+        # k placed automatically via detour-index placement.
         runs: list[tuple[
             list[tuple[int, int]] | None,
             tuple[str, int, list[tuple[tuple[int, int], float]]] | None,
@@ -222,10 +212,6 @@ def main() -> None:
             runs.append((cli_goals, None, ""))
         elif args.k_goals is not None:
             for k in range(1, args.k_goals + 1):
-                if k == 1:
-                    print("  Goals (k=1): maze centre (default)")
-                    runs.append((None, None, "k=1"))
-                    continue
                 try:
                     pairs = scenario_goals(wall_matrix, width, height, (0, 0), k)
                 except ValueError as exc:

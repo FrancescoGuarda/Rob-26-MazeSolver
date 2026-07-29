@@ -30,17 +30,12 @@ See each script's module docstring for full options.
 
 Placement is **automated**: headless runs (e.g. `experiments/01_experiment.py -k N`,
 `experiments/run_batch.py`) call `src.goal_placement.scenario_goals()` directly
-at load time, right after parsing the maze, for every k ≥ 2. Placement is
+at load time, right after parsing the maze, for every k ≥ 1. Placement is
 deterministic and takes milliseconds, so there is no pre-step to run and no
 file to keep in sync — the same maze and k always produce the same goals.
 
-`scenario_goals()` itself treats every k ≥ 1 identically (see "Placement
-algorithm" below — there is no special case for k = 1 inside the module).
-By convention, both `01_experiment.py` and `run_batch.py` still choose to
-never call it for a "1 goal" run: they treat that case as the classic
-default centre-*area* goal (`goals=None`, resolved by `BaseAlgorithm`
-itself), not as an automated single-cell placement. That is a decision
-made by those two callers, not a rule of this module.
+`scenario_goals()` treats every k ≥ 1 identically (see "Placement
+algorithm" below).
 
 `tools/place_goals.py` is a thin CLI over that module, kept around only so
 you can inspect where goals land in a maze and why (it prints the detour

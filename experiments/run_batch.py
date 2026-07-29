@@ -5,9 +5,7 @@ run_batch.py — Full-corpus batch test over mazes/txt/, all goal-count scenario
 Runs both AStarExplorer and DStarLiteExplorer, headless (SimAPI), over every
 maze in mazes/txt/, at four goal-count scenarios per maze:
 
-    1 goal  — the default 4-cell centre area (goals=None; NOT a detour-index 
-    placement)
-    2, 3, 4 goals — placed automatically by src.goal_placement.scenario_goals,
+    1, 2, 3, 4 goals — placed automatically by src.goal_placement.scenario_goals,
               which maximizes the detour index (BFS distance / Manhattan
               distance) so goals land in the most deceptive-to-a-planner cells
 
@@ -85,16 +83,8 @@ def _discover_mazes(maze_dir: str) -> list[str]:
 
 def _resolve_goals(
     wall_matrix: list[list[int]], width: int, height: int, k: int,
-) -> tuple[list[tuple[int, int]] | None, tuple[int, list] | None]:
-    """Returns (goals, scenario) for goal-count k.
-
-    k == 1 uses the default centre-area goal (goals=None, no scenario
-    metadata) — this script's own convention for the "1 goal" bucket, not
-    something scenario_goals() itself special-cases (it treats every k >= 1
-    identically). k >= 2 uses automated detour-index placement.
-    """
-    if k == 1:
-        return None, None
+) -> tuple[list[tuple[int, int]], tuple[int, list]]:
+    """Returns (goals, scenario) for goal-count k, via detour-index placement."""
     pairs = scenario_goals(wall_matrix, width, height, START, k)
     goals = [cell for cell, _ in pairs]
     return goals, (k, pairs)

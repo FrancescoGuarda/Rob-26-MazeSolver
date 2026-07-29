@@ -31,11 +31,6 @@ Placement algorithm (deterministic, no randomness):
 
 ``scenario_goals`` is a thin wrapper over ``place_goals()``: for every
 k >= 1 it returns the first k placement steps as (cell, detour) pairs.
-(Some callers — e.g. experiments/01_experiment.py, experiments/run_batch.py
-— choose to treat "1 goal" as a caller-level convention meaning the
-classic default centre-area goal, `goals=None`, and skip calling this
-function for k = 1 entirely; that is a convention of those callers, not
-something this module special-cases.)
 """
 from __future__ import annotations
 
