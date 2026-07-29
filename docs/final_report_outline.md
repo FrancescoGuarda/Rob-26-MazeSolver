@@ -153,7 +153,7 @@ Own page, full bibliographic entries (not just the short in-text form used above
 - **D\* / the freespace assumption:** A. Stentz, "Optimal and Efficient Path Planning for Partially-Known Environments," *Proc. IEEE International Conference on Robotics and Automation (ICRA)*, 1994.
 - **D\*-Lite:** S. Koenig and M. Likhachev, "D\* Lite," *Proc. AAAI/IAAI*, 476–483, 2002; and S. Koenig and M. Likhachev, "Fast Replanning for Navigation in Unknown Terrain," *IEEE Transactions on Robotics*, 21(3), 354–363, 2005.
 - **Detour index / route factor:** M. Barthélemy, "Spatial Networks," *Physics Reports*, 499(1–3), 1–101, 2011; M. T. Gastner and M. E. J. Newman, "The Spatial Structure of Networks," *European Physical Journal B*, 49(2), 247–252, 2006.
-- **Rob-26-MazeSolver repository:** F. Guarda and A. Moro, *Rob-26-MazeSolver*, v1.0.0, MIT License, GitHub (2024). *(entry not yet present in `CITATIONS.bib` — add it there when drafting.)*
+- **Rob-26-MazeSolver repository:** F. Guarda and A. Moro, *Robotica 2026 - Maze Solver Project*, software, MIT License, GitHub (released 2026-07-29). [`CITATION.cff`](../CITATION.cff)
 
 # Rob-26-MazeSolver_report draft prompt 
 
