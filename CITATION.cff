@@ -1,0 +1,16 @@
+cff-version: 1.2.0
+message: >-
+  If you use this software in your research or project work, please cite it using the metadata in this file.
+title: "Robotica 2026 - Maze Solver Project"
+abstract: >-
+  A Python-based maze-solving project implementing A* and D* Lite planners, goal placement strategies, and experimental evaluation for micromouse-style environments.
+authors:
+  - family-names: Guarda
+    given-names: Francesco
+  - family-names: Moro
+    given-names: Andrea
+type: software
+repository-code: "https://github.com/FrancescoGuarda/Rob-26-MazeSolver"
+url: "https://github.com/FrancescoGuarda/Rob-26-MazeSolver"
+license: MIT
+date-released: "2026-07-29"
