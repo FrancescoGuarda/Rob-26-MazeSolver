@@ -30,7 +30,7 @@ Central theme: the experimental comparison of `AStarExplorer` and `DStarLiteExpl
 | F3 | Grouped bar chart: cumulative nodes expanded and cumulative planning time, A\* vs D\*-Lite, grouped by goal-count scenario (mean across mazes, std-dev error bars) | §4.3 |
 | F4 | Regression plot: nodes expanded vs. residual distance to goal, per replanning event, faceted by goal-count scenario (k=1..4), linear trend with 95% band | §4.4 |
 | F5 | Same regression, all scenarios pooled into one pair of trend lines | §4.4 |
-| F6 *(pending)* | Memory occupancy of search structures over successive replanning events — one representative run per algorithm, expected bounded/resetting for A\* vs. monotonically increasing for D\*-Lite | §4.5 |
+| F6 | Memory occupancy of search structures over successive replanning events — one representative run per algorithm, bounded/resetting for A\* vs. a growing working set for D\*-Lite | §4.5 |
 
 Keep to these six; a system-architecture diagram was considered for §3.1 but is optional and should be cut first if space runs short — the interface is adequately described in prose. F1 is a small inset (not full-width) so §2 stays within its half-page budget.
 
@@ -175,19 +175,21 @@ Primary context, read in this order:
    multi-goal handling) — don't invent detail beyond what it describes.
 3. docs/repo_structure.md — codebase map, for locating anything the
    outline/roadmap references but doesn't fully explain.
-4. notebooks/report.md — the results write-up with actual experimental
-   findings and numbers. If it doesn't exist yet, produce it first (see
-   below) — it's the source of truth for every number in §4.
+4. notebooks/report.md — the completed results write-up: experimental
+   methodology, every figure and table, and the numbers behind them. It
+   is the sole source of truth for every quantitative claim in §4 — pull
+   figures, tables, and findings from it directly rather than
+   recomputing or re-deriving anything from the raw logs or notebooks.
 
 Before drafting §4 (Experimental Evaluation):
-- If notebooks/report.md doesn't exist: read notebooks/data_analysis.ipynb
-  and notebooks/goals_analysis.ipynb, verify their headline claims
-  directly against results/logs/*/*/*.json (don't trust the notebooks'
-  own inline markdown commentary — some of it is stale relative to the
-  actual figures), and write it up per the outline's §4 subsections.
-- Two figures don't exist yet: F1 (annotated MMS GUI screenshot, §2) and
-  F6 (memory-occupancy plot, §4.5). Produce them, or mark them
-  `[FIGURE PENDING]` in the draft rather than silently dropping them.
+- Read notebooks/report.md in full and map its sections onto the
+  outline's §4 subsections (§4.1 Setup, §4.2 Goal-placement difficulty,
+  §4.3 Replanning cost, §4.4 Search-cost scaling, §4.5 Memory footprint)
+  — every figure and table it documents, including the memory-occupancy
+  analysis (F6), is ready to cite by content.
+- One figure still doesn't exist: F1 (annotated MMS GUI screenshot, §2).
+  Produce it, or mark it `[FIGURE PENDING]` in the draft rather than
+  silently dropping it.
 
 Consult as needed for depth (pull specific facts, don't summarize wholesale):
 src/algorithms/README.md, src/api/README.md, src/metrics/README.md,
@@ -204,22 +206,5 @@ Constraints:
   woven into Methodology/Evaluation, not standalone sections.
 - No implementation detail beyond what's needed to understand a
   contribution or result (no CLI flags, file layout, GUI color codes).
-- Every quantitative claim must come from results/logs/ or the notebooks
-  directly, not from memory.
-
----
-
-**Task:** Draft `Rob-26-MazeSolver_report.md` using the project documentation and source code as the authoritative context.
-
-Use the following documents as the **primary sources**:
-
-* `implementation_roadmap.md` — definitive overview of the implemented project and its final architecture;
-* `repo_structure.md` — repository organization and component responsibilities;
-* `notebooks/report.md` — experimental methodology, results, analyses, figures, and tables;
-* `final_report_outline.md` — authoritative structure and content blueprint for the report.
-
-Complement these with any additional project files necessary to accurately describe the implementation, methodology, and contributions.
-
-Write a concise, technically accurate, and well-structured report that follows the outline while emphasizing the project's main contributions, methodology, experimental evaluation, and conclusions. Ensure consistency with the implementation and experimental results, avoid inventing unsupported details, and reference project components where appropriate.
-
-The resulting `Rob-26-MazeSolver_report.md` should be a polished, self-contained final report suitable for direct conversion into the project deliverable.
+- Every quantitative claim must come from notebooks/report.md, not from
+  memory.
