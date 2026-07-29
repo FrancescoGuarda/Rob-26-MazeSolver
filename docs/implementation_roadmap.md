@@ -181,8 +181,8 @@
   - Average cumulative planning time over all runs per goal-count scenario: stepped bars expected for A\*, near-flat for D\*-Lite
   - [ ] Memory occupancy of search structures over replanning events: bounded (resetting) for A\*, monotonically increasing for D\*-Lite
 - [X] Manually verified at least two runs per algorithm in the MMS GUI, confirming the headless `SimAPI` behaviour matches the real simulator
-- [ ] Analyse the aggregated data: compare A\* and D\*-Lite across planning metrics (cumulative planning time, per-event computational cost, memory occupancy) for increasing goal-count scenarios, over all mazes in `mazes/txt/`
-- [ ] Document results and anomalies (e.g. D\*-Lite memory growth on high-complexity mazes, divergent performance across goal-count scenarios) in `notebooks/report.md`
+- [X] Analyse the aggregated data: compare A\* and D\*-Lite across planning metrics (cumulative planning time, per-event computational cost, memory occupancy) for increasing goal-count scenarios, over all mazes in `mazes/txt/`
+- [X] Document results and anomalies (e.g. D\*-Lite memory growth on high-complexity mazes, divergent performance across goal-count scenarios) in `notebooks/report.md`
 
 > **Milestone M6 — Data collected:** All plots generated; all metrics tabulated for both algorithms across all four goal-count scenarios (k=1..4) over the full maze corpus.
 
@@ -192,6 +192,6 @@
 
 **Objective:** Critically interpret the results and produce the final deliverable.
 
-- [ ] Write `notebooks/report.md`: the results and discussion write-up drawing on Phase 6's aggregated data
+- [X] Write `notebooks/report.md`: the results and discussion write-up drawing on Phase 6's aggregated data
 - [ ] Write the final report in `Rob-26-MazeSolver_report.md`, following the structure defined in the proposal, incorporating `notebooks/report.md`'s findings and the goal-placement metric's known limitations (documented in `detour_metric_limitations.md`) as an explicit discussion point
 - [ ] Review and finalise `README.md` with setup instructions, run commands, and a brief results summary

@@ -3,7 +3,6 @@
 ```
 Rob-26-MazeSolver/
 ├── run.py
-├── implementation.md
 ├── requirements.txt
 ├── README.md
 ├── LICENSE
@@ -26,7 +25,6 @@ Rob-26-MazeSolver/
 │   ├── algorithms/
 │   │   ├── __init__.py
 │   │   ├── README.md
-│   │   ├── base.py
 │   │   ├── base_algorithm.py
 │   │   ├── astar.py
 │   │   └── dstar_lite.py
@@ -45,10 +43,10 @@ Rob-26-MazeSolver/
 │   ├── maze_test.txt
 │   ├── txt/              # 55 competition mazes, flat, ASCII .txt (Map format)
 │   ├── img/              # PNG rendering of each maze in txt/
-│   └── img2/              # secondary PNG renderings (alternate source)
+│   └── img2/             # secondary PNG renderings (alternate source)
 │
 ├── results/
-│   └── logs/               # gitignored; <goal-count>/<algo>/*.json
+│   └── logs/             # gitignored; <goal-count>/<algo>/*.json
 │
 ├── experiments/
 │   ├── __init__.py
@@ -80,7 +78,7 @@ Rob-26-MazeSolver/
 ├── notebooks/
 │   ├── goals_analysis.ipynb
 │   ├── data_analysis.ipynb
-│   └── report.md            # results write-up, not yet written
+│   └── report.md               # results write-up
 │
 └── docs/
     ├── Rob_26_proposal.md / .pdf
@@ -90,11 +88,10 @@ Rob-26-MazeSolver/
     ├── notes.md
     ├── mms.md
     ├── detour_metric_limitations.md
-    ├── articles/             # gitignored reference PDFs
     └── res/                  # screenshots + generated analysis figures
 ```
 
-`app/mms.app` (the MMS simulator binary itself) also lives at the repo root but is gitignored, along with `results/logs/` and `docs/articles/`.
+`app/mms.app` (the MMS simulator binary itself) also lives at the repo root but is gitignored, along with `results/logs/`.
 
 ---
 
@@ -102,9 +99,6 @@ Rob-26-MazeSolver/
 
 ### `run.py`
 The MMS GUI entry point — the script path configured in MMS's "Run command" field. It always talks to the real simulator via `MmsAPI`, never `SimAPI`; headless/batch execution goes exclusively through `experiments/run_batch.py`. Parses `--algo {astar,dstar_lite}`, `--goal X Y` (repeatable), `--n-goals N --seed S`, `--auto-goals MAZE -k N` (in-process detour-index placement via `src/goal_placement.py`, resolved against `mazes/txt/` and dimension-checked against the loaded maze), `--heuristic {min_path,manhattan}` (A\* only, ignored by D\*-Lite), `--maze-name` (log-filename override), `--output-dir`, `--no-log`. `--goal`, `--n-goals`, and `--auto-goals` are mutually exclusive; with none given, the algorithm defaults to the maze's 4-cell centre area. Instantiates `MmsAPI`, `MazeMap`, `Robot`, the chosen algorithm and a `MetricsLogger`, calls `algorithm.run()`, then (unless `--no-log`) `logger.export_json()` — producing a log directly comparable to headless `SimAPI` runs. Also spawns a small Tkinter legend window in its own process (Tkinter needs to own its process's main thread) mapping the running algorithm's GUI colors/text codes to their meaning; a legend window left over from a previous MMS "Run" click is closed automatically.
-
-### `implementation.md`
-Detailed per-file specifications and design decisions (wall bitmask encoding, module layout, etc.) for the core infrastructure under `src/`, referenced from `docs/implementation_roadmap.md`.
 
 ---
 
@@ -127,7 +121,6 @@ Houses the API layer that decouples algorithms from the I/O backend.
 - **`base_algorithm.py`** — `BaseAlgorithm(ABC)`: constructor takes `api, maze_map, robot, logger`; goal resolution at construction time (`goals=[...]` → explicit list; `n_random_goals=k, random_seed=s` → `k` random free cells; neither → 4-cell centre area); `heuristic="min_path"|"manhattan"` (see below); `verbose` (default `True`) gates `[WALL]`/`[REPLAN]` stderr diagnostics without affecting the exported JSON log. Abstract `run()`. Shared utilities: `_sense_and_update`, `_execute_path`, `_compute_goal_heuristic` (wall-aware multi-source BFS from the goal set), `_compute_start_heuristic`, `_compute_heuristic` (dispatches on `self._heuristic`), `_report_walls`/`_report_replan` (consolidated stderr formatting). Polls `was_reset()`/`ack_reset()`/`robot.reset()` once per sense-plan-act iteration.
 - **`astar.py`** — `AStarExplorer`: runs A\* from scratch on the current partial map under the freespace assumption (unexplored cells treated as passable), replans whenever a newly confirmed wall lies on the current plan, executes path steps via `turn_left`/`turn_right`/`move_forward`. Multi-goal via greedy nearest-goal visitation order. `--heuristic`: `min_path` (default, wall-aware BFS) or `manhattan` (straight-line, ignores wall knowledge). GUI: colors expanded/open-list cells, displays `f`/`h`-value text, clears on each replanning event.
 - **`dstar_lite.py`** — `DStarLiteExplorer`: incremental D\*-Lite (`g`/`rhs` values, priority queue, `km` accumulator for agent-motion consistency); repairs the plan incrementally from newly discovered walls rather than replanning from scratch. Uses its own Manhattan-to-current-position heuristic internally (the `--heuristic` flag is a no-op for this algorithm — its `Key` invariant requires a heuristic consistent with a fixed reference point, a different mathematical role than A\*'s). GUI: `g-XXXr-YYY` cell text, consistent/inconsistent/trivial cell coloring.
-- **`base.py`** — A standalone wall-follower script adapted from `mackorone/mms-python`'s `Main.py`, calling the raw `mms_api` module functions directly rather than going through `BaseAPI`/`BaseAlgorithm`. Independent of the shared algorithm hierarchy used by `AStarExplorer` and `DStarLiteExplorer`.
 
 Both `AStarExplorer` and `DStarLiteExplorer` extend `BaseAlgorithm` and share the same constructor signature, `run()` entry point, and `MetricsLogger`/JSON-log schema, so they are interchangeable in `run.py` and `experiments/run_batch.py`.
 
@@ -183,7 +176,7 @@ Standalone scripts for creating and curating maze files and inspecting goal plac
 ### `/notebooks/`
 - **`goals_analysis.ipynb`** — Renders the detour-score heatmap `place_goals` maximizes at each step, for k=1..4 on a chosen maze; saves `docs/res/goal_heatmap_evolution.svg`. Source data is computed directly from `mazes/txt/` via `src/goal_placement.py` — no run logs needed.
 - **`data_analysis.ipynb`** — Reads every JSON log under `results/logs/`; produces the A\*-vs-D\*-Lite replanning-cost comparison (bar chart) and the nodes-expanded-vs-residual-distance regression figures, split by goal count and aggregated. Saves all figures to `docs/res/`.
-- **`report.md`** — Not yet written. Will document the aggregated experimental results and any anomalies (e.g. D\*-Lite memory growth on high-complexity mazes) once the full analysis is complete.
+- **`report.md`** — Documents the aggregated experimental results and any anomalies.
 
 ### `/docs/`
 Project documentation.
@@ -195,7 +188,6 @@ Project documentation.
 - **`notes.md`** — Course logistics and background reference material (assigned readings, videos, submission rules).
 - **`mms.md`** — Complete MMS simulator setup and integration guide: installation, algorithm configuration, `run.py`'s full CLI (including `--auto-goals`/`--heuristic`/`--no-log`), GUI usage walkthrough, troubleshooting table.
 - **`detour_metric_limitations.md`** — Documents a known bias of the detour-index goal-placement metric (it rewards small Manhattan denominators, so goals cluster near the start; the ratio measures *relative* deception, not *absolute* difficulty) — a deliberate, accepted limitation to state explicitly in the final report.
-- **`articles/`** — Reference PDFs (gitignored, not committed).
 - **`res/`** — Screenshots referenced by `mms.md` (`mms_gui.png`, `new_algorithm_dialog.png`, `maze_selection.png`, `wall_configurations_dict.png`, `logo_unibs.png/.svg`) and generated analysis figures referenced by the report (`goal_heatmap_evolution.svg`, `replanning_cost_bars.svg`, `nodes_vs_residual_distance_by_k.svg`, `nodes_vs_residual_distance_aggregate.svg`).
 
 ### `requirements.txt`
