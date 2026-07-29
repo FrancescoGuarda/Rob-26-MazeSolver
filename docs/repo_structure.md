@@ -81,11 +81,9 @@ Rob-26-MazeSolver/
 │   └── report.md               # results write-up
 │
 └── docs/
-    ├── Rob_26_proposal.md / .pdf
     ├── Rob-26-MazeSolver_report.md / .pdf
     ├── implementation_roadmap.md
     ├── repo_structure.md
-    ├── notes.md
     ├── mms.md
     ├── detour_metric_limitations.md
     └── res/                  # screenshots + generated analysis figures
@@ -181,11 +179,9 @@ Standalone scripts for creating and curating maze files and inspecting goal plac
 ### `/docs/`
 Project documentation.
 
-- **`Rob_26_proposal.md`** — Original project proposal (read-only reference).
 - **`Rob-26-MazeSolver_report.md`** — The final report, structured per the proposal index; not yet written.
 - **`implementation_roadmap.md`** — Phase-by-phase implementation roadmap.
 - **`repo_structure.md`** — This file.
-- **`notes.md`** — Course logistics and background reference material (assigned readings, videos, submission rules).
 - **`mms.md`** — Complete MMS simulator setup and integration guide: installation, algorithm configuration, `run.py`'s full CLI (including `--auto-goals`/`--heuristic`/`--no-log`), GUI usage walkthrough, troubleshooting table.
 - **`detour_metric_limitations.md`** — Documents a known bias of the detour-index goal-placement metric (it rewards small Manhattan denominators, so goals cluster near the start; the ratio measures *relative* deception, not *absolute* difficulty) — a deliberate, accepted limitation to state explicitly in the final report.
 - **`res/`** — Screenshots referenced by `mms.md` (`mms_gui.png`, `new_algorithm_dialog.png`, `maze_selection.png`, `wall_configurations_dict.png`, `logo_unibs.png/.svg`) and generated analysis figures referenced by the report (`goal_heatmap_evolution.svg`, `replanning_cost_bars.svg`, `nodes_vs_residual_distance_by_k.svg`, `nodes_vs_residual_distance_aggregate.svg`).
