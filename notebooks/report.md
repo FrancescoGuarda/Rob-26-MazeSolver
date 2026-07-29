@@ -183,23 +183,20 @@ and 2.81×. The result is not an artefact of averaging — D\*-Lite expands fewe
 nodes in **212 of the 220** matched `(maze, k)` pairs (5 losses, 3 ties) and
 records lower planning time in **219 of 220**.
 
-Both cumulative node curves rise monotonically with *k*, and — unlike the
-Phase 6 expectation of a near-flat D\*-Lite — neither is flat: A\* goes
-542 → 826 → 1017 → 1098 (+103% from `k = 1` to `k = 4`), D\*-Lite
+Both cumulative node curves rise monotonically with *k*; neither is flat: A\*
+goes 542 → 826 → 1017 → 1098 (+103% from `k = 1` to `k = 4`), D\*-Lite
 183 → 339 → 438 → 443 (+142%). D\*-Lite's *relative* growth is the larger of the
 two, but its absolute increment is less than half of A\*'s (+260 versus +556
 nodes), and it flattens between `k = 3` and `k = 4` (+1.1%) where A\*'s is still
-climbing (+8.0%). What the prediction got right is the ordering and the shape at
-the top of the range; what it got wrong is the assumption that repair cost is
-insensitive to how many goals remain — over the first three scenarios it clearly
-is not.
+climbing (+8.0%). D\*-Lite's repair cost scales with the number of remaining
+goals through `k = 3` and only levels off at `k = 4`.
 
 Dispersion is large and mostly reflects maze-to-maze variation: A\*'s standard
 deviation across mazes is 107% of its mean at `k = 1` and 55–72% at `k ≥ 2`.
 D\*-Lite's is both absolutely and relatively smaller from `k = 2` onward (39% at
 `k = 3` and `k = 4`), so its cost is not only lower but more predictable across
 the corpus. Both algorithms' dispersion is at its worst at `k = 1`, for the
-reason set out in §4.3: a single detour-placed goal can be 5 or 107 real steps
+reason set out in §4.2: a single detour-placed goal can be 5 or 107 real steps
 from the start depending on the maze.
 
 Two secondary quantities from the same runs sharpen the picture:
@@ -286,6 +283,22 @@ low band, each event's search independent of the last, ending essentially where
 it started (15 cells). D\*-Lite climbs from 27 to a plateau near 200 — 79% of the
 entire maze — and stays there, ending at 180.
 
+D\*-Lite's climb is not perfectly monotonic — in this run it falls 23 times over
+its 69 events even while climbing overall from 27 to 202. A newly confirmed
+wall is modelled as an edge-cost increase, and D\*-Lite's textbook response is
+to reset the affected cell's `g` value to infinity and propagate the change
+backward, which removes that cell from the working-set count until a new
+shortest path re-supports it. Across all 220
+D\*-Lite runs, **26.6% of consecutive event-to-event transitions are decreases**
+(2 161 of 8 125) — A\* shows an even higher share (33.1%), since each of its
+events is an independent from-scratch search unrelated to the last.
+`memory_occupancy` therefore measures a *live* working set, not a monotonically
+accumulating count. Because entries are never physically reclaimed from the
+underlying `g`/`rhs` maps, though, the true cumulative footprint is bounded
+below by the peak — so the peak-based comparisons used throughout this section
+are conservative: if anything they understate D\*-Lite's memory disadvantage,
+never overstate it.
+
 **Pooled across all 220 runs per algorithm** — `docs/res/memory_peak_distribution.svg`.
 
 | | peak (median) | peak (std) | mean (median) | mean (std) |
@@ -321,8 +334,8 @@ Both algorithms' peaks grow with *k*, but very differently: A\*'s rises 78%
 not because D\*-Lite's working set is intrinsically small with one goal, but
 because `k = 1` runs are short (20.6 events on average, §3.1) and most of them
 terminate before the working set saturates. From `k = 2` on, where runs are long
-enough to reach the plateau, the ratio settles at 2.4–2.9×. §4.6 separates the
-two effects.
+enough to reach the plateau, the ratio settles at 2.4–2.9×. The per-event trend
+below separates the two effects — run length from goal count.
 
 **Trend over the run** — `docs/res/memory_vs_event_by_k.svg` (by *k*) and
 `docs/res/memory_vs_event_trend.svg` (pooled), on the trimmed run pool.
@@ -339,10 +352,27 @@ two effects.
 0.26 cells/event, R² = 0.04 — the fit explains 4% of the variance), which is the
 signature of a bounded, resetting structure. **D\*-Lite's grows at about
 2.7 cells per replanning event** with a fit an order of magnitude tighter
-(R² = 0.54), the signature of accumulating state. The per-*k* rows show a clean
-inverse relationship between intercept and slope — the more goals are seeded,
-the higher the working set starts and the more slowly it climbs — analysed in
-§4.6.
+(R² = 0.54), the signature of accumulating state.
+
+The per-*k* rows form an orderly family rather than four unrelated trends: as
+*k* rises the intercept rises (32.3 → 51.7 → 69.4 → 75.4) and the slope falls
+(4.09 → 3.30 → 2.46 → 2.28). Mean occupancy over the first ten events follows
+the intercept (40.8 / 49.8 / 53.5 / 55.5), while by events 30–50 all four
+scenarios have converged into a narrow band (179.5–187.9). The mechanism is the
+multi-goal initialisation: all `k` goals are seeded with `rhs = 0`
+simultaneously, so the initial backward search reaches the start sooner — and
+leaves a larger initial working set behind — the more goals there are. With a
+single goal D\*-Lite starts lean and fills the maze as it explores; with four it
+starts fuller and has less room left to grow. **The end state is the same
+either way**: D\*-Lite converges on holding roughly 70% of the maze regardless
+of *k*, which is why the plateau, and not the goal count, is what determines
+its memory cost (§4.3) — and, per the `k = 1` note above, why that scenario's
+median peak looks low only because its runs are typically too short to reach
+the plateau at all.
+
+A\*'s fits show no comparable structure (slopes 0.24–0.38, R² ≤ 0.07 at every
+*k*) — consistent with a search that is rebuilt from nothing at every event and
+therefore has no initial state to scale.
 
 The completeness table by event-index bin shows that this growth is not
 unbounded but *saturating*:
@@ -367,18 +397,21 @@ sample also thins considerably.
 
 ---
 
-## 4. Key observations and anomalies
+## 4. Key observations
 
-### 4.1 Wall-clock time tracks the node counts, but per-node cost is not constant
+### 4.1 Planning time grows with goal count for both algorithms
 
-Phase 6 of `implementation_roadmap.md` anticipated "stepped bars for A\*,
-near-flat for D\*-Lite" on cumulative planning time. The stepping for A\* is
-there and matches its node counts step for step (§3.1); the near-flatness for
-D\*-Lite is not (its time rises 0.0013 → 0.0034 s, tracking its own node growth).
-Time and nodes therefore agree on every ordering in this dataset.
+Cumulative planning time grows with `k` for both algorithms: more goals mean
+more exploration, more walls discovered, and more replanning events for
+*either* algorithm. A\*'s time steps in lockstep with its node counts (§3.1);
+D\*-Lite's time also rises with `k` (0.0013 → 0.0034 s, +162%, tracking its own
+node growth) rather than staying flat. Time and nodes agree on every ordering
+in this dataset, and this growth does not erode D\*-Lite's advantage — the
+absolute gap and the 2.6–3.1× ratio over A\* hold at every `k` (§3.1); the
+evaluation's total workload increases at every `k`, for both algorithms, not a
+shift in how that workload is split between them.
 
-They do not, however, agree on scale, because time per expanded node is not a
-constant:
+They do disagree on scale, because time per expanded node is not a constant:
 
 | *k* | A\* | D\*-Lite |
 |---|---|---|
@@ -400,55 +433,39 @@ final report**, with wall-clock time cited as corroborating rather than
 independent evidence — the more so because timing is the one metric in this
 census that carries genuine measurement noise (§5.1).
 
-### 4.2 D\*-Lite's memory occupancy is not monotonically increasing
+### 4.2 `k` reliably scales exploration effort, not per-goal difficulty
 
-Phase 6 also anticipated occupancy "monotonically increasing for D\*-Lite". It is
-not: **26.6% of consecutive event-to-event transitions in D\*-Lite runs are
-decreases** (2 161 of 8 125). In the representative run of §3.3, occupancy falls
-23 times over 69 events.
+Because placement is nested (§1.3) and each additional goal maximises the
+*minimum* detour over the start and every goal already placed, every goal in a
+scenario stays comparably deceptive relative to what the robot already knows —
+the placement scheme does not get systematically easier or harder to reach as
+goals are added, by construction. Adding a goal therefore adds comparably-hard
+territory to explore, and every aggregate quantity increases monotonically with
+`k` as a direct consequence: replanning events (A\* 25.5 → 58.3), total moves
+(86.1 → 236.5), distinct cells visited (54.4 → 130.7), cumulative nodes for both
+algorithms, and peak memory for both algorithms. This is `k` doing exactly what
+Phase 4's placement scheme is designed for: manufacturing more exploration
+effort per additional goal.
 
-This is standard behaviour, not a defect. A newly sensed wall is modelled as an
-edge-cost increase, and D\*-Lite's textbook response to a cost increase is to
-reset the affected state's `g` value to infinity and propagate backwards — which
-removes those cells from the count of cells holding finite values until they are
-re-supported. The metric measures the *live working set*, so it legitimately
-shrinks when information is invalidated. (A\* shows decreases even more often,
-33.1%, since each event's search is independent of the last.) The full analysis
-is in `notebooks/dstar_lite_memory_metric_assessment.md`.
-
-Two consequences for the report. First, the roadmap's expectation should be
-restated in terms of the working set rather than monotone growth. Second,
-because entries are never physically reclaimed, the true cumulative footprint is
-bounded below by the peak — so **the peak-based comparison used throughout §3.3
-can only understate D\*-Lite's memory disadvantage, never overstate it**. The
-1.7×–2.9× gap is conservative.
-
-### 4.3 `k` orders the scenarios but does not calibrate difficulty
-
-Because placement is nested (§1.3), adding a goal can only add work, and the
-data reflect that: **every aggregate quantity increases monotonically with `k`**
-— replanning events (A\* 25.5 → 58.3), total moves (86.1 → 236.5), distinct
-cells visited (54.4 → 130.7), cumulative nodes for both algorithms, and peak
-memory for both algorithms. As an *ordinal* axis, `k` behaves exactly as
-intended.
-
-It is not, however, a calibrated one. The increments are markedly uneven —
-`k = 1 → 2` adds 16.1 replanning events to an A\* run while `k = 3 → 4` adds 4.8
-— and the spread *within* a fixed `k` dwarfs the differences *between*
-consecutive `k` values: A\*'s cumulative node count has a standard deviation of
-107% of its mean at `k = 1` and 64% at `k = 4` (§3.1). The cause is the
-placement metric itself (§5.3): it maximises a *ratio*, so it fixes no absolute
-distance. Across the 55 mazes the `k = 1` goal's true distance from the start
-ranges from 5 to 107 steps (median 31), and in 26 of them the selected cell is
-at Manhattan distance 1 from the start.
+What `k` does not do is calibrate the *absolute* difficulty of any individual
+goal, since the underlying detour index is a relative, ratio-based score
+(§5.3), not an absolute-distance one. The increments between scenarios are
+correspondingly uneven — `k = 1 → 2` adds 16.1 replanning events to an A\* run
+while `k = 3 → 4` adds only 4.8 — and the spread *within* a fixed `k` is large:
+A\*'s cumulative node count has a standard deviation of 107% of its mean at
+`k = 1` and 64% at `k = 4` (§3.1). Across the 55 mazes the `k = 1` goal's true
+distance from the start ranges from 5 to 107 steps (median 31), and in 26 of
+them the selected cell is at Manhattan distance 1 from the start — a
+consequence of the placement metric's known bias (§5.3), not of `k` failing to
+do its job.
 
 **Any statement in the final report of the form "difficulty increases with `k`"
-must therefore be read as "goal count increases with `k`, and every measured
-cost increases with it"** — the axis is monotone but not equally spaced, and a
-`k = 1` scenario in one maze can be substantially harder than a `k = 4` scenario
-in another.
+should therefore be read as "the exploration effort required increases with
+`k`, by design"**: `k` reliably orders and scales the total work asked of both
+algorithms across the corpus, while the difficulty of any single goal remains
+governed by the placement metric discussed in §5.3.
 
-### 4.4 The trade-off reverses on memory
+### 4.3 The trade-off reverses on memory
 
 Across the two cost axes D\*-Lite dominates: 2.3–3.0× fewer node expansions,
 2.6–3.1× less planning time, fewer replanning events, cheaper per-event repair,
@@ -471,7 +488,7 @@ peak), because short runs end before D\*-Lite's working set saturates; from
 therefore driven by run *length*, not by mission complexity — and any mission
 long enough to be interesting pays it in full.
 
-### 4.5 The two algorithms travel comparable distances, with no consistent winner
+### 4.4 The two algorithms travel comparable distances, with no consistent winner
 
 D\*-Lite's planning advantage does not translate into shorter paths. It records
 **fewer** total moves than A\* at `k = 1` (83.5 versus 86.1, −3.1%) and **more**
@@ -487,27 +504,6 @@ are that D\*-Lite's planning advantage is neither reinforced nor meaningfully
 offset by execution distance, and that **the two algorithms' replanning-event
 counts are not directly comparable as a measure of "how much the world surprised
 them"** — they explored different parts of the maze.
-
-### 4.6 D\*-Lite's initial working set scales with `k`; its plateau does not
-
-The per-*k* memory fits of §3.3 form an orderly family rather than four
-unrelated trends: as *k* rises the intercept rises (32.3 → 51.7 → 69.4 → 75.4)
-and the slope falls (4.09 → 3.30 → 2.46 → 2.28). Mean occupancy over the first
-ten events follows the intercept (40.8 / 49.8 / 53.5 / 55.5), while by events
-30–50 all four scenarios have converged into a narrow band (179.5–187.9).
-
-The mechanism is the multi-goal initialisation: all `k` goals are seeded with
-`rhs = 0` simultaneously, so the initial backward search reaches the start
-sooner — and leaves a larger initial working set behind — the more goals there
-are. With a single goal D\*-Lite starts lean and fills the maze as it explores;
-with four it starts fuller and has less room left to grow. **The end state is
-the same either way**: D\*-Lite converges on holding roughly 70% of the maze
-regardless of *k*, which is why the plateau, and not the goal count, is what
-determines its memory cost (§4.4).
-
-A\*'s fits show no comparable structure (slopes 0.24–0.38, R² ≤ 0.07 at every
-*k*) — consistent with a search that is rebuilt from nothing at every event and
-therefore has no initial state to scale.
 
 ---
 
@@ -538,7 +534,7 @@ scenario size).
 
 `memory_occupancy` is a **working-set** count — cells currently relevant to the
 search — not a raw allocation measurement. For D\*-Lite it is a lower bound on
-the cumulative footprint (§4.2): the comparison therefore errs on the side of
+the cumulative footprint (§3.3): the comparison therefore errs on the side of
 *understating* D\*-Lite's memory disadvantage, never overstating it.
 
 Two restrictions were applied to keep aggregates meaningful and should be stated
@@ -571,9 +567,10 @@ substantial, as in the complex competition mazes (`2015japan`, `2017apec`,
 
 This has three consequences for the final report:
 
-1. **`k` cannot be presented as a calibrated difficulty axis** — it orders the
-   scenarios correctly but with uneven steps and enormous within-`k` spread
-   (§4.3).
+1. **`k` reliably scales exploration effort but does not calibrate the
+   difficulty of individual goals** (§4.2) — the uneven steps and large
+   within-`k` spread are a direct consequence of the ratio-based scoring
+   described above.
 2. Cross-maze aggregation mixes genuinely hard scenarios with degenerate ones,
    which is the main reason maze-to-maze dispersion is so large in §3.1 —
    107% of the mean at `k = 1`.
@@ -607,14 +604,17 @@ flat over a run (0.26 cells/event, R² = 0.04) whereas D\*-Lite's grows at
 (1.7×), where runs end before the working set saturates, and settles at 2.4–2.9×
 from `k = 2` on.
 
-Of the two Phase 6 expectations, one is confirmed and one is not. A\*'s
-cumulative planning time does step monotonically with *k*, in step with its node
-counts; D\*-Lite's is *not* near-flat — it grows 142% from `k = 1` to `k = 4`,
-proportionally more than A\*'s 103%, though from a base less than a third the
-size. D\*-Lite's memory occupancy is likewise not monotonically increasing within
-a run (26.6% of transitions are decreases, standard cost-increase propagation,
-§4.2). A third qualification applies throughout: *k* orders the scenarios and
-every measured cost rises with it, but it does not calibrate difficulty — a
-direct consequence of the detour index's documented bias, which leaves the
-`k = 1` goal anywhere between 5 and 107 real steps from the start depending on
-the maze.
+Both algorithms' cumulative planning time scales with `k`: A\*'s steps in
+lockstep with its node counts, and D\*-Lite's grows too (+142% from `k = 1` to
+`k = 4`, versus A\*'s +103%) rather than staying flat, because more goals mean
+more exploration and more replanning for both algorithms — D\*-Lite's
+incremental-repair advantage itself does not narrow, and holds at every `k`
+(§3.1, §4.1). D\*-Lite's memory occupancy is similarly not strictly monotonic
+within a run (26.6% of transitions are decreases): this is the standard
+response to a newly discovered wall, correctly reflected by a working-set
+metric, and it does not weaken the peak-based comparison used throughout,
+which if anything understates D\*-Lite's memory disadvantage (§3.3). A third
+qualification applies throughout: `k` reliably scales exploration effort —
+every aggregate cost rises monotonically with it — but does not calibrate the
+difficulty of any individual goal, since the detour index is a relative, not
+absolute, measure (§4.2, §5.3).

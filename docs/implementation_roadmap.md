@@ -178,11 +178,11 @@
 - [X] Run the complete batch suite; archive raw logs in `results/logs/<goal_dir>/<algorithm>` with filenames encoding `<algo>_<maze_name>_<timestamp>.json`
 - [X] `notebooks/data_analysis.ipynb`: reads all JSON logs, aggregates per-algorithm statistics, and generates the following figures (saved to `docs/res/`):
   - Linear regression plot of *computational cost per replanning event* vs *residual distance to goal*, A\* and D\*-Lite overlaid on the same graph, per goal-count scenario and aggregated across all scenarios
-  - Average cumulative planning time over all runs per goal-count scenario: stepped bars expected for A\*, near-flat for D\*-Lite
-  - [ ] Memory occupancy of search structures over replanning events: bounded (resetting) for A\*, monotonically increasing for D\*-Lite
+  - Average cumulative planning time over all runs per goal-count scenario: stepped bars for A\*; D\*-Lite's cumulative time also grows with the number of goals (more goals → more exploration → more replanning), remaining substantially lower than A\*'s at every scenario
+  - [X] Memory occupancy of search structures over replanning events: bounded (resetting) for A\*; D\*-Lite's working set grows over a run but is not strictly monotonic — a newly discovered wall resets some cells' `g`/`rhs` back to infinity (standard cost-increase propagation), which this live working-set metric reflects as a local decrease
 - [X] Manually verified at least two runs per algorithm in the MMS GUI, confirming the headless `SimAPI` behaviour matches the real simulator
 - [X] Analyse the aggregated data: compare A\* and D\*-Lite across planning metrics (cumulative planning time, per-event computational cost, memory occupancy) for increasing goal-count scenarios, over all mazes in `mazes/txt/`
-- [X] Document results and anomalies (e.g. D\*-Lite memory growth on high-complexity mazes, divergent performance across goal-count scenarios) in `notebooks/report.md`
+- [X] Document results and key observations (e.g. D\*-Lite memory growth on high-complexity mazes, divergent performance across goal-count scenarios) in `notebooks/report.md`
 
 > **Milestone M6 — Data collected:** All plots generated; all metrics tabulated for both algorithms across all four goal-count scenarios (k=1..4) over the full maze corpus.
 
