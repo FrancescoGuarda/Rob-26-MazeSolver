@@ -22,6 +22,10 @@ header-includes:
     - '\graphicspath{{Immagini/}{report/Immagini/}}'
     - \usepackage{booktabs}
     - \usepackage{adjustbox}
+colorlinks: true
+linkcolor: blue
+urlcolor: blue
+citecolor: blue
 ---
 
 \begin{titlepage}
@@ -37,25 +41,35 @@ header-includes:
 \vspace{0.8cm}
 {\large Anno di Corso 2025-2026\par}
 \vfill
+
 \begin{flushleft}
 {\large\textbf{Docente del corso:}\par}
 {\large Prof. Enrico Scala\par}
 {\large Prof. Luigi Gargioni\par}
 \end{flushleft}
+
 \vspace{1cm}
+
 \begin{flushright}
 {\large\textbf{Studenti:}\par}
 {\large Francesco Guarda\par}
 {\large Andrea Moro\par}
 \end{flushright}
+
+\vfill
+
+{\footnotesize
+\textbf{Licensing Note}\\
+This work is licensed under the Creative Commons Attribution 4.0 International License.
+Copyright for components of this work owned by other than the authors and the
+University of Brescia must be honoured.
+}
+
 \end{titlepage}
 
 \tableofcontents
 \clearpage
 
-> **Licensing Note**
->
-> This work is licensed under the Creative Commons Attribution 4.0 International License. Copyright for components of this work owned by other than the authors and the University of Brescia must be honoured.
 
 # Introduction
 
@@ -77,7 +91,7 @@ Two strategies are implemented against a shared exploration framework and evalua
 
 **Walls representation.** Each cell stores a 4-bit wall bitmask, one bit per cardinal direction (N=1, E=2, S=4, W=8), used identically by the simulator protocol and the internal maze map.
 
-<!--![Annotated `mms` GUI during a typical run: (1) the maze grid, redrawn with sensed walls and per-cell overlay text on every (re)plan; (2) wall segments and cell text as rendered by the running algorithm; (3) the Stats tab, reporting cumulative run statistics.](res/mms_gui_annotated.png){width=48%}-->
+![Annotated `mms` GUI during a typical run: (1) the maze grid, redrawn with sensed walls and per-cell overlay text on every (re)plan; (2) wall segments and cell text as rendered by the running algorithm; (3) the Stats tab, reporting cumulative run statistics.](res/mms_gui_annotated.png){width=48%}
 
 # Methodology
 
@@ -124,24 +138,24 @@ Because placement is nested, every k-goal scenario shares the same first goal, a
 
 : First-goal (k=1) placement for four representative mazes: zigzag, 2015japan and 2017apec are both high-scoring and genuinely remote; museum is high-scoring only because its Manhattan distance is 1. Every nested k $\ge$ 1 scenario shares this same first goal.
 
-<!--![Score map maximised by goal placement at each step k = 1..4, for a representative maze from the corpus.](res/goal_heatmap_evolution.svg){width=88%}-->
+![Score map maximised by goal placement at each step k = 1..4, for a representative maze from the corpus.](res/goal_heatmap_evolution.png){width=88%}
 
 ## Replanning cost: nodes expanded and wall-clock planning time
 
 D\*-Lite expands **2.3–3.0× fewer nodes** than A\* at every k and accumulates **2.6–3.1× less** cumulative planning time (Figure 3) — a consistent win on both measures, not a trade-off: fewer nodes in 212 of the 220 matched (maze, k) pairs, lower time in 219 of 220. Nodes expanded is the algorithm-intrinsic, implementation-independent measure of search effort; planning time is useful corroboration but remains hardware/implementation-dependent in principle — here the two agree on every ordering.
 
-<!--![Cumulative nodes expanded and cumulative planning time, A\* vs. D\*-Lite, grouped by goal-count scenario (mean across the 55 mazes, ±1 std-dev error bars).](res/replanning_cost_bars.svg){width=82%}-->
+![Cumulative nodes expanded and cumulative planning time, A\* vs. D\*-Lite, grouped by goal-count scenario (mean across the 55 mazes, ±1 std-dev error bars).](res/replanning_cost_bars.png){width=82%}
 
 ## Search-cost scaling: evidence for incremental reuse
 
 Regressing nodes expanded on residual distance to goal per replanning event (dense band, residual distance $\le$ 30, 99.3% of the 18,176 logged events): A\*'s slope is steeper than D\*-Lite's at every k and the gap widens with k — 1.83 vs. 0.66 at k=1, up to 2.75 vs. 0.81 at k=4; pooled, A\*'s slope (2.32) is 3.1× D\*-Lite's (0.76). Table 2 shows the same divergence bin by bin: the ratio climbs from 1.4× nearest the goal to 2.6× by 15–20 cells away, then holds rather than widening further. This is direct empirical support for D\*-Lite's central claim (§3.3): repair cost scales with the *size of the region a change affects*, not with the size of the whole remaining problem, whereas A\*'s from-scratch cost grows with the full remaining search space.
 
-<!--![Nodes expanded vs. residual distance to goal, per replanning event, faceted by goal-count scenario (k=1..4); linear trend with 95% confidence band.](res/nodes_vs_residual_distance_by_k.svg){width=100%}-->
+![Nodes expanded vs. residual distance to goal, per replanning event, faceted by goal-count scenario (k=1..4); linear trend with 95% confidence band.](res/nodes_vs_residual_distance_by_k.png){width=100%}
 
-<!--![The same regression pooled across all goal-count scenarios into one pair of trend lines.](res/nodes_vs_residual_distance_aggregate.svg){width=60%}-->
+![The same regression pooled across all goal-count scenarios into one pair of trend lines.](res/nodes_vs_residual_distance_aggregate.png){width=60%}
 
 | Residual distance | A\* mean [95% CI] | D\*-Lite mean [95% CI] | Ratio | In trend |
-|---|---|---|---|---|
+|----|-----|-----|---|---|
 | (0, 5] | 6.6 [6.5, 6.7] | 4.7 [4.6, 4.8] | 1.4× | yes |
 | (5, 10] | 13.5 [13.3, 13.6] | 6.9 [6.7, 7.0] | 2.0× | yes |
 | (10, 15] | 22.8 [22.4, 23.1] | 9.1 [8.7, 9.4] | 2.5× | yes |
@@ -158,7 +172,7 @@ Regressing nodes expanded on residual distance to goal per replanning event (den
 
 The two algorithms trade cost for statelessness in opposite directions (Figure 6). On a representative run, A\*'s open+closed set oscillates in a low band and ends close to where it started (peak 122, final 15, of 256 cells) — it resets every replanning event. D\*-Lite's working set — cells currently holding a finite `g` or `rhs` — instead climbs toward a plateau near 80% of the maze and stays there (peak 202, final 180 on the same run); the climb is not perfectly monotonic, since a newly discovered wall resets some cells' `g` to infinity until a new shortest path re-supports them, but the trajectory is unmistakably one of accumulation rather than reset. Pooled over all 220 runs per algorithm, D\*-Lite's median peak occupancy is **2.6× A\*'s** (182.5 vs. 69 cells) and its median per-run mean is **4.0× A\*'s**; no A\* run's peak exceeds 75% of the maze, while 31 of 220 D\*-Lite runs exceed 90% and four fill it completely. The penalty is mildest at k=1 (1.7×, since short runs end before the working set saturates) and settles at 2.4–2.9× from k=2 on. This reverses the ordering of §4.3: A\* buys its bounded footprint at the price of repeated search, D\*-Lite buys cheap repair at the price of retained state — neither algorithm dominates outright.
 
-<!--![Memory occupancy of search structures over successive replanning events, one representative run per algorithm: bounded and resetting for A\*, growing toward a plateau for D\*-Lite.](res/memory_run_example.svg){width=72%}-->
+![Memory occupancy of search structures over successive replanning events, one representative run per algorithm: bounded and resetting for A\*, growing toward a plateau for D\*-Lite.](res/memory_run_example.png){width=72%}
 
 # Conclusions and Future Work
 
@@ -169,12 +183,6 @@ Beyond this comparison, four pieces of infrastructure remain reusable: the share
 **Limitations.** The detour index's normalisation biases goal placement toward the start (§4.2; full discussion in the repository); wall-clock planning time remains hardware- and implementation-dependent in principle, even though it corroborated the node-count conclusion throughout this campaign; and k reliably scales aggregate exploration effort without calibrating the absolute difficulty of any individual goal.
 
 **Future work.** Additional algorithms could be added behind the same shared interface (e.g. weighted or anytime variants), and a start-proximity correction to the detour index would remove its main known bias. The full implementation, maze corpus, and experimental logs are available in the project repository (Guarda & Moro, 2026).
-
----
-
-> **Acknowledgements**
->
-> The authors would like to acknowledge the use of various large language model (LLM)-based AI tools during the preparation of this work. These tools were employed solely to improve the clarity and readability of the written text and to assist in the development and debugging of the project's source code. All technical content, design decisions, and conclusions remain the sole responsibility of the authors.
 
 \clearpage
 
@@ -187,3 +195,13 @@ Beyond this comparison, four pieces of infrastructure remain reusable: the share
 - **D\*-Lite:** S. Koenig and M. Likhachev, "D\* Lite," *Proc. AAAI/IAAI*, 476–483, 2002; and S. Koenig and M. Likhachev, "Fast Replanning for Navigation in Unknown Terrain," *IEEE Transactions on Robotics*, 21(3), 354–363, 2005.
 - **Detour index / route factor:** M. Barthélemy, "Spatial Networks," *Physics Reports*, 499(1–3), 1–101, 2011; M. T. Gastner and M. E. J. Newman, "The Spatial Structure of Networks," *European Physical Journal B*, 49(2), 247–252, 2006.
 - **Rob-26-MazeSolver repository:** F. Guarda and A. Moro, *Robotica 2026 - Maze Solver Project*, software, MIT License, GitHub (released 2026-07-29).
+
+\vfill
+
+\hrule
+\vspace{0.5em}
+
+\begin{small}
+\textbf{Acknowledgements.}
+The authors acknowledge the use of large language model (LLM)-based artificial intelligence tools during the preparation of this report. These tools were used exclusively to improve the clarity and readability of the manuscript and to assist with source code development and debugging. All technical content, implementation decisions, experimental methodology, and conclusions remain the sole responsibility of the authors.
+\end{small}
