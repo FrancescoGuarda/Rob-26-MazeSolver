@@ -89,11 +89,11 @@ Two strategies are implemented against a shared exploration framework and evalua
 
 **The Micromouse problem and the MMS simulator.** The Micromouse competition tasks a small autonomous robot with exploring an unknown grid maze from a fixed start to a fixed goal region. This project uses `mms` (mackorone, 2024), which reproduces that setting: a GUI for visualization, driving the algorithm through a text-based `stdin`/`stdout` protocol of wall queries, moves, turns, and display commands. It was adopted for its standard, competition-faithful interface, built-in visualization, and existing Python bindings, extended in this project (§3).
 
+![Annotated `mms` GUI during a typical run: (1) the maze grid, redrawn with sensed walls and per-cell overlay text on every (re)plan; (2) wall segments and cell text as rendered by the running algorithm; (3) the Stats tab, reporting cumulative run statistics.](res/mms_gui_annotated-light.png){width=90%}
+
 **Search under partial observability.** Under the freespace assumption, an agent plans as if every unsensed cell were open, then repairs its plan when a sensed wall proves otherwise — the optimistic-planning principle behind the D\* family of incremental replanners (Stentz, 1994). A\* (Hart et al., 1968) is the classical heuristic best-first baseline: optimal given an admissible heuristic, but with no memory of a previous search once the map changes. D\*-Lite (Koenig & Likhachev, 2002, 2005) is designed explicitly to reuse previous search results when the environment — or the agent's knowledge of it — changes slightly, rather than resolving the whole problem from scratch.
 
 **Walls representation.** Each cell stores a 4-bit wall bitmask, one bit per cardinal direction (N=1, E=2, S=4, W=8), used identically by the simulator protocol and the internal maze map.
-
-![Annotated `mms` GUI during a typical run: (1) the maze grid, redrawn with sensed walls and per-cell overlay text on every (re)plan; (2) wall segments and cell text as rendered by the running algorithm; (3) the Stats tab, reporting cumulative run statistics.](res/mms_gui_annotated.png){width=48%}
 
 # Methodology
 
@@ -146,7 +146,7 @@ Because placement is nested, every k-goal scenario shares the same first goal, a
 
 D\*-Lite expands **2.3–3.0× fewer nodes** than A\* at every k and accumulates **2.6–3.1× less** cumulative planning time (Figure 3) — a consistent win on both measures, not a trade-off: fewer nodes in 212 of the 220 matched (maze, k) pairs, lower time in 219 of 220. Nodes expanded is the algorithm-intrinsic, implementation-independent measure of search effort; planning time is useful corroboration but remains hardware/implementation-dependent in principle — here the two agree on every ordering.
 
-![Cumulative nodes expanded and cumulative planning time, A\* vs. D\*-Lite, grouped by goal-count scenario (mean across the 55 mazes, ±1 std-dev error bars).](res/replanning_cost_bars.png){width=82%}
+![Cumulative nodes expanded and cumulative planning time, A\* vs. D\*-Lite, grouped by goal-count scenario (mean across the 55 mazes, ±1 std-dev error bars).](res/replanning_cost_bars.png)
 
 ## Search-cost scaling: evidence for incremental reuse
 
