@@ -22,6 +22,8 @@ header-includes:
     - '\graphicspath{{Immagini/}{report/Immagini/}}'
     - \usepackage{booktabs}
     - \usepackage{adjustbox}
+    - \usepackage{caption}
+    - \captionsetup{font=footnotesize, labelfont=bf, singlelinecheck=false}
 colorlinks: true
 linkcolor: blue
 urlcolor: blue
@@ -138,7 +140,7 @@ Because placement is nested, every k-goal scenario shares the same first goal, a
 
 : First-goal (k=1) placement for four representative mazes: zigzag, 2015japan and 2017apec are both high-scoring and genuinely remote; museum is high-scoring only because its Manhattan distance is 1. Every nested k $\ge$ 1 scenario shares this same first goal.
 
-![Score map maximised by goal placement at each step k = 1..4, for a representative maze from the corpus.](res/goal_heatmap_evolution.png){width=88%}
+![Score map maximised by goal placement at each step k = 1..4, for a representative maze (japan2009) from the corpus.](res/goal_heatmap_evolution.png)
 
 ## Replanning cost: nodes expanded and wall-clock planning time
 
