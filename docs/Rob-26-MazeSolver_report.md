@@ -38,9 +38,11 @@ citecolor: blue
 {\large Corso di Laurea in Ingegneria Informatica\par}
 \vspace{2cm}
 {\large Relazione del progetto di Robotica\par}
-\vspace{0.6cm}
-{\LARGE\bfseries Maze Exploration Search Analysis \par}
 \vspace{0.8cm}
+{\LARGE\bfseries Maze Exploration Search Analysis: \par}
+{\large A Comparative Evaluation of A* and D*-Lite Replanning under Multi-Goal\par}
+{\large Detour-Index-Based Exploration\par}
+\vspace{1.0cm}
 {\large Anno di Corso 2025-2026\par}
 \vfill
 
@@ -81,15 +83,15 @@ This report evaluates two search algorithms, A\* (full replanning) and D\*-Lite 
 
 # Background
 
-**The Micromouse problem and the MMS simulator.** The Micromouse competition tasks a small autonomous robot with exploring an unknown grid maze from a fixed start to a fixed goal region. This project uses `mms` (mackorone, 2024), which reproduces that setting through a GUI for visualisation and a text-based `stdin`/`stdout` protocol for wall queries, moves, turns, and display commands. Its competition-faithful design, built-in visualisation, and existing Python bindings motivated its adoption here, where it is further extended in §3.
+**The Micromouse problem and the MMS simulator.** The Micromouse competition tasks a small autonomous robot with exploring an unknown grid maze from a fixed start to a fixed goal region. This project uses `mms`[$^{1}$](#ref1), which reproduces that setting through a GUI for visualisation and a text-based `stdin`/`stdout` protocol for wall queries, moves, turns, and display commands. Its competition-faithful design, built-in visualisation, and existing Python bindings motivated its adoption here, where it is further extended in §3.
 
-![Annotated `mms` GUI during a running D\*-Lite session: (1) wall segments and per-cell overlay text; (2) the maze grid; (3) the Run Output panel, logging sensing and replanning events; (4) the maze-selection path; (5) the algorithm-selection field; (6) the algorithm's GUI legend window.](res/mms_gui_annotated-light.png)
+![Annotated `mms` GUI during a running D\*-Lite session: (1) wall segments and per-cell overlay text; (2) the maze grid; (3) the Run Output panel, logging sensing and replanning events; (4) the maze-selection path; (5) the algorithm-selection field; (6) the algorithm's GUI legend window.](res/mms_gui_annotated-light.png){width=90%}
 
-**Search under partial observability.** Under the freespace assumption, an agent plans as though every unsensed cell were open, repairing its plan only when a sensed wall proves otherwise. This optimistic-planning principle underlies the D\* family of incremental replanners (Stentz, 1994). The report compares two heuristic search strategies built on this principle: A\* (Hart et al., 1968), the classical best-first baseline, and D\*-Lite (Koenig & Likhachev, 2002, 2005), designed explicitly to reuse prior search results rather than resolve the whole problem recursively from scratch.
+**Search under partial observability.** Under the freespace assumption, an agent plans as though every unsensed cell were open, repairing its plan only when a sensed wall proves otherwise. This optimistic-planning principle underlies the D\* family of incremental replanners [$^{2}$](#ref2). The report compares two heuristic search strategies built on this principle: A\*[$^{3}$](#ref3), the classical best-first baseline, and D\*-Lite[$^{4}$](#ref4), designed explicitly to reuse prior search results rather than resolve the whole problem recursively from scratch.
 
 # Methodology
 
-## Exploration algorithms common Interface
+## Shared Exploration Interface
 
 `BaseAPI` is an abstract contract governing wall sensing, movement, display, and reset, decoupling an exploration algorithm from its I/O backend. `BaseAlgorithm`, in turn, implements the shared *sense* → *plan* → *act* → *log* loop on top of `BaseAPI`, along with goal resolution, accommodating the framework's diverse goal-placement options (Micromouse's default centre area, detour-index-based placement, explicit coordinates, or random placement), and the metrics hooks common to every search algorithm. Adding a third algorithm to the framework therefore requires implementing only a single class against this interface.
 
@@ -111,7 +113,7 @@ Given a set of goals, both algorithms visit them in greedy nearest-goal order, t
 
 ## Modeling exploration effort: the detour index
 
-For a reference cell and a candidate cell, the **detour index** is defined as the ratio between the true in-maze (BFS) distance and the Manhattan distance separating them. A cell that is topologically close yet remote within the maze thus yields a high detour index, rendering it highly deceptive and prone to misleading greedy planners operating under partial knowledge (Barthélemy, 2011; Gastner & Newman, 2006). 
+For a reference cell and a candidate cell, the **detour index** is defined as the ratio between the true in-maze (BFS) distance and the Manhattan distance separating them. A cell that is topologically close yet remote within the maze thus yields a high detour index, rendering it highly deceptive and prone to misleading greedy planners operating under partial knowledge[$^{5}$](#ref5).
 
 In the multi-goal, detour-index-based placement procedure, the per-cell detour index is first computed relative to the agent's starting position, and the first goal is placed at the cell maximising this index. At each subsequent step, the detour index is recomputed relative to the start and to every previously placed goal, with only the *minimum* value retained for each cell. This ensures that the selection of each new goal accounts for deceptiveness not only with respect to the start but also with respect to all previously fixed goal locations. Figure 2 illustrates the resulting per-cell detour index at each placement step k = 1..4 for a representative maze, showing how the retained-minimum criterion progressively reshapes the score map as goals accumulate.
 
@@ -123,13 +125,13 @@ This procedure yields a deterministic sequence of nested goals that are mutually
 
 ## Setup
 
-The corpus comprises 55 standard Micromouse competition mazes (Weisberg), each 16×16 (256 cells), filtered to guarantee full connectivity from the start so that every goal is reachable and successful termination of exploration is thereby guaranteed. For each maze, four goal-count scenarios (k = 1..4) are placed automatically via detour-index placement (§3.5). The resulting headless batch campaign comprises **440 runs** in total, each logging run-level scalars together with a per-event replanning record, as detailed in the subsequent sections.
+The corpus comprises 55 standard Micromouse competition mazes[$^{6}$](#ref6), each 16×16 (256 cells), filtered to guarantee full connectivity from the start so that every goal is reachable and successful termination of exploration is thereby guaranteed. For each maze, four goal-count scenarios (k = 1..4) are placed automatically via detour-index placement (§3.5). The resulting headless batch campaign comprises **440 runs** in total, each logging run-level scalars together with a per-event replanning record, as detailed in the subsequent sections.
 
 With the exception of wall-clock planning time, every metric is exactly reproducible across runs. The analysis presented below is therefore descriptive and paired, requiring no inferential statistics; planning time is the only quantity subject to genuine measurement noise.
 
 ## Goal-placement across the maze corpus
 
-Although detour-index placement progressively intensifies exploration effort as k grows, Table 1 spans the resulting range of first-goal placements across a representative sample of the maze corpus and reveals that a high detour score can arise from two qualitatively different situations: goals that are genuinely remote *and* high-scoring, and goals whose high score reflects only their proximity to the start rather than any real difficulty. This start-proximity pattern recurs in 26 of the 55 mazes; Figure 2 illustrates one such instance, where the second placed goal sits immediately behind a wall close to the reference set.
+Although detour-index placement progressively intensifies exploration effort as k grows, Table 1 spans the resulting range of first-goal placements across a representative sample of the maze corpus and reveals that a high detour score can arise from two qualitatively different situations: goals that are genuinely remote *and* high-scoring, and goals whose high score reflects only their proximity to the start rather than any real difficulty. This start-proximity pattern recurs in 26 of the 55 mazes; Figure 2 illustrates one such instance, where the second placed goal, as opposed to the genuinely remote others, sits immediately behind a wall close to the reference set.
 
 | Maze | Manhattan dist. | Real (BFS) dist. | Detour score |
 |---|---|---|---|
@@ -149,29 +151,16 @@ D\*-Lite consistently expands between roughly two and three times fewer nodes th
 ## Search-cost scaling: evidence for incremental reuse
 
 A\*'s per-event search cost scales more steeply with residual distance to the goal than does D\*-Lite's, and this gap widens as k increases. Within the dense band of residual distances up to 30 cells, a linear regression of nodes expanded on residual distance shows A\*'s slope rising from approximately 1.8 at k = 1 to nearly 2.8 at k = 4, whereas D\*-Lite's remains comparatively flat. Pooled across all values of k, A\*'s slope is roughly three times steeper than D\*-Lite's (Figure 4). This provides direct empirical support for D\*-Lite's central claim (§3.3): repair cost scales with the *size of the region affected by a change*, rather than with the size of the whole remaining problem, whereas A\*'s from-scratch cost grows with the full remaining search space. 
-<!-- Table 2 confirms the same divergence on a bin-by-bin basis.
 
-![Nodes expanded as a function of residual distance to the goal, per replanning event, faceted by goal-count scenario (k = 1..4), with linear trend and 95% confidence band.](res/nodes_vs_residual_distance_by_k.png){width=90%}
-
-| Residual distance | $\mu_{\text{A*}}$ | $\text{ci}^{95\%}_{\text{A*}}$ | $\mu_{\text{D*-Lite}}$ | $\text{ci}^{95\%}_{\text{D*-Lite}}$ | Ratio |
-|----|-----|-----|---|---|---|
-| (0, 5] | 6.6 | [6.5, 6.7] | 4.7 | [4.6, 4.8] | 1.4× |
-| (5, 10] | 13.5 | [13.3, 13.6] | 6.9 | [6.7, 7.0] | 2.0× |
-| (10, 15] | 22.8 | [22.4, 23.1] | 9.1 | [8.7, 9.4] | 2.5× |
-| (15, 20] | 34.8 | [33.7, 35.9] | 13.2 | [12.4, 14.0] | 2.6× |
-| (20, 25] | 52.6 | [49.9, 55.3] | 20.0 | [17.1, 22.9] | 2.6× |
-| (25, 30] | 77.7 | [70.2, 85.3] | 30.7 | [23.9, 37.4] | 2.5× |
-
-: Mean nodes expanded with 95% confidence interval by residual-distance bin, restricted to the dense band used for the fit above (99.3% of all logged events).
--->
+![Nodes expanded as a function of residual distance to the goal, per replanning event, faceted by goal-count scenario (k = 1..4), with linear trend and 95% confidence band.](res/nodes_vs_residual_distance_by_k.png)
 
 ## Memory footprint of search structures
 
 The two algorithms make opposite trade-offs between search cost and memory (Figure 5). In a single run of maze 00japan at k = 4, A\*'s combined open and closed set oscillates within a low band, resetting at every replanning event. D\*-Lite's working set, by contrast, climbs toward a plateau near 80% of the maze and remains there. This climb is not perfectly monotonic, newly discovered walls may reset cells `g` values to infinity, but the overall trajectory is unmistakably one of accumulation rather than reset. The pooled trend (Figure 5, right) confirms that this pattern holds across the corpus: D\*-Lite's occupancy rises steadily with event count, while A\*'s remains essentially flat.
 
-Table 3 summarises this pattern across all runs. D\*-Lite's median peak occupancy is more than double A\*'s, and its median per-run mean occupancy is roughly four times higher. No A\* run's peak occupancy exceeds 75% of the maze, whereas 31 of the 220 D\*-Lite runs exceed 90%, and four fill the maze entirely. This reverses the ordering established in §4.3: A\* achieves its bounded memory footprint at the cost of repeated search, whereas D\*-Lite achieves cheap repair at the cost of retained state. Neither algorithm dominates outright.
+Table 2 summarises this pattern across all runs. D\*-Lite's median peak occupancy is more than double A\*'s (e.g., 182.5 vs. 69.0) and its median per-run mean occupancy is roughly four times higher (e.g., 116.58 vs. 29.51). No A\* run's peak occupancy exceeds 75% of the maze, whereas 31 of the 220 D\*-Lite runs exceed 90%, and four fill the maze entirely. This reverses the ordering established in §4.3: A\* achieves its bounded memory footprint at the cost of repeated search, whereas D\*-Lite achieves cheap repair at the cost of retained state. Neither algorithm dominates outright.
 
-![Memory occupancy of search structures over successive replanning events. Left: a single run (maze 00japan, k=4). Right: the same trend pooled across all runs.](res/memory_run_and_trend_combined.png)
+![Memory occupancy of search structures over successive replanning events. Left: a single run (maze 00japan, k=4). Right: the same trend pooled across all runs.](res/memory_run_and_trend_combined.png){width=90%}
 
 | Algorithm | Peak — median | Peak — $\sigma$ | Mean — median | Mean — $\sigma$ |
 |---|---|---|---|---|
@@ -184,19 +173,19 @@ Table 3 summarises this pattern across all runs. D\*-Lite's median peak occupanc
 
 On the metrics that matter most, D\*-Lite's incremental repair consistently outperforms A\*'s from-scratch replanning: it expands fewer nodes per event and accumulates less planning time overall, with the gap widening as replanning distance increases. This advantage, however, comes at the cost of memory. Neither algorithm dominates outright; the preferable choice depends on which resource is scarcer, and on micromouse-class embedded hardware, this is not a foregone conclusion.
 
-The main limitation of this evaluation is that the detour index recurrently biases goal placement toward the start rather than calibrating absolute exploration effort. Introducing a start-proximity correction to the metric would represent the most direct next step. A second promising direction is to extend the framework to additional algorithms, weighted and anytime variants in particular, since incorporating a new algorithm requires implementing only a single class against this interface (§3.1). The full implementation, maze corpus, and experimental logs are available in the project repository (Guarda & Moro, 2026).
+The main limitation of this evaluation is that the detour index recurrently biases goal placement toward the start rather than calibrating absolute exploration effort. Introducing a start-proximity correction to the metric would represent the most direct next step. A second promising direction is to extend the framework to additional algorithms, weighted and anytime variants in particular, since incorporating a new algorithm requires implementing only a single class against this interface (§3.1). The full implementation, maze corpus, and experimental logs are available in the project repository[$^{7}$](#ref7).
 
 \clearpage
 
 # References {-}
 
-- **MMS simulator:** mackorone, *mms — A Micromouse Simulator*, v1.2.0, MIT License, GitHub (2024).
-- **Maze corpus:** J. Weisberg, *Micromouse Maze Collection*, tcp4me.com.
-- **A\*:** P. E. Hart, N. J. Nilsson, and B. Raphael, "A Formal Basis for the Heuristic Determination of Minimum Cost Paths," *IEEE Transactions on Systems Science and Cybernetics*, 4(2), 100–107, 1968.
-- **D\* / the freespace assumption:** A. Stentz, "Optimal and Efficient Path Planning for Partially-Known Environments," *Proc. IEEE International Conference on Robotics and Automation (ICRA)*, 1994.
-- **D\*-Lite:** S. Koenig and M. Likhachev, "D\* Lite," *Proc. AAAI/IAAI*, 476–483, 2002; and S. Koenig and M. Likhachev, "Fast Replanning for Navigation in Unknown Terrain," *IEEE Transactions on Robotics*, 21(3), 354–363, 2005.
-- **Detour index / route factor:** M. Barthélemy, "Spatial Networks," *Physics Reports*, 499(1–3), 1–101, 2011; M. T. Gastner and M. E. J. Newman, "The Spatial Structure of Networks," *European Physical Journal B*, 49(2), 247–252, 2006.
-- **Rob-26-MazeSolver repository:** F. Guarda and A. Moro, *Robotica 2026 - Maze Solver Project*, software, MIT License, GitHub (released 2026-07-29).
+1. []{#ref1}**MMS simulator:** mackorone, *mms — A Micromouse Simulator*, v1.2.0, MIT License, GitHub (2024).
+2. []{#ref2}**D\* / the freespace assumption:** A. Stentz, "Optimal and Efficient Path Planning for Partially-Known Environments," *Proc. IEEE International Conference on Robotics and Automation (ICRA)*, 1994.
+3. []{#ref3}**A\*:** P. E. Hart, N. J. Nilsson, and B. Raphael, "A Formal Basis for the Heuristic Determination of Minimum Cost Paths," *IEEE Transactions on Systems Science and Cybernetics*, 4(2), 100–107, 1968.
+4. []{#ref4}**D\*-Lite:** S. Koenig and M. Likhachev, "D\* Lite," *Proc. AAAI/IAAI*, 476–483, 2002; and S. Koenig and M. Likhachev, "Fast Replanning for Navigation in Unknown Terrain," *IEEE Transactions on Robotics*, 21(3), 354–363, 2005.
+5. []{#ref5}**Detour index / route factor:** M. Barthélemy, "Spatial Networks," *Physics Reports*, 499(1–3), 1–101, 2011; M. T. Gastner and M. E. J. Newman, "The Spatial Structure of Networks," *European Physical Journal B*, 49(2), 247–252, 2006.
+6. []{#ref6}**Maze corpus:** J. Weisberg, *Micromouse Maze Collection*, tcp4me.com.
+7. []{#ref7}**Rob-26-MazeSolver repository:** F. Guarda and A. Moro, *Robotica 2026 - Maze Solver Project*, software, MIT License, GitHub (released 2026-07-29).
 
 \vfill
 
