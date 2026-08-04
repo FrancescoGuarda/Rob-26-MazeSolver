@@ -1,136 +1,144 @@
-# MMS Integration Guide
+# MMS Simulator Guide
 
-This document explains how to set up and run the Micromouse algorithms using the **MMS simulator**.
+Setup and usage guide for running this project's algorithms — `AStarExplorer` and `DStarLiteExplorer` — inside the [MMS Micromouse simulator](https://github.com/mackorone/mms).
+
+> [!NOTE]
+> This guide covers the **GUI simulator** only. For headless, no-GUI batch evaluation across many mazes, see `experiments/run_batch.py` instead — it drives the same algorithms through `SimAPI` rather than MMS.
 
 ## Prerequisites
 
-Before proceeding, ensure you have completed the **Installation** section in [README.md](README.md#installation):
-- ✓ Python 3.8+ installed
-- ✓ Virtual environment (`.venv`) created and activated
-- ✓ Dependencies installed via `pip install -r requirements.txt`
-- ✓ Project structure initialized (Python modules in `src/algorithms/`, maze files in `mazes/`)
+Complete the **Installation** section of the [root README](../README.md#installation) first:
+- ✓ Install Python 3.8+
+- ✓ Create and activate a virtual environment (`.venv`)
+- ✓ Install dependencies via `pip install -r requirements.txt`
 
-## Step 1: Download and Install the Simulator
+## Step 1: Install the Simulator
 
-1. Download the [MMS simulator binary](https://github.com/mackorone/mms/releases) for your operating system.
-2. Extract the archive into a folder (e.g., `~/mms/` or `./app/` in the project root).
+1. Download the [MMS release](https://github.com/mackorone/mms/releases) for your OS.
+2. Extract it somewhere convenient, e.g. `~/mms/`.
 
-### macOS-Specific Step
-
-On macOS, you may encounter a quarantine error:
-```
-"mms.app" is damaged and can't be opened. You should move it to the Trash.
-```
-
-To fix this, remove the quarantine attribute:
-```bash
-cd ~/mms  # or wherever you extracted the simulator
-xattr -d com.apple.quarantine mms.app
-```
+> [!IMPORTANT]
+> **macOS only:** opening `mms.app` may fail with *"mms.app is damaged and can't be opened."* This is Gatekeeper blocking an unsigned download, not a corrupt file — clear the quarantine attribute:
+> ```bash
+> cd ~/mms  # wherever you extracted mms.app
+> xattr -d com.apple.quarantine mms.app
+> ```
 
 ## Step 2: Launch the Simulator
 
-Run the MMS simulator:
 ```bash
-open mms.app              # macOS
+open mms.app   # macOS
 ```
 
-## Step 3: Configure an Algorithm
+On Linux/Windows, run the extracted executable directly.
 
-1. In the MMS window, click the **`+`** button to add a new algorithm.
-   ![MMS gui](res/mms_gui.png)
+## Step 3: Configure the Algorithm
 
-2. Fill in the **New Mouse Algorithm** dialog:
-   - **Name**: Algorithm identifier (e.g., `flood_fill`, `wall_following`, `astar`)
-   - **Directory**: Full path to the repository root (e.g., `/path/to/Rob-26-MazeSolver`)
-   - **Build command**: Leave blank (Python is interpreted, not compiled)
-   - **Run command**: See the section below
+In the MMS window, click **`+`** to add a new algorithm.
 
-### Run Command Format
+![MMS GUI](res/mms_gui.png)
 
-The run command instructs MMS how to invoke `run.py`, the repository's MMS GUI entry point. Use the template:
+Fill in the **New Mouse Algorithm** dialog:
+
+| Field | Value |
+|---|---|
+| **Name** | Algorithm identifier, e.g. `astar` or `dstar_lite` |
+| **Directory** | Absolute path to the repository root (e.g., `/path/to/Rob-26-MazeSolver`)|
+| **Build command** | *(leave blank — Python is interpreted, not compiled)* |
+| **Run command** | See [Run command](#run-command) below |
+
+![New Mouse Algorithm dialog](res/new_algorithm_dialog.png)
+
+### Run command
+
+`run.py` is the MMS entry point: it talks to the real simulator via `MmsAPI` and is what the **Run command** field must invoke.
 
 ```bash
-.venv/bin/python run.py --algo [astar|dstar_lite] [--goal X Y ...] [--n-goals N] [--seed S] [--auto-goals MAZE] [-k N] [--heuristic min_path|manhattan] [--output-dir DIR] [--no-log]
+.venv/bin/python run.py --algo <astar|dstar_lite> [goals] [options]
 ```
 
-- `--algo`: the algorithm to run — `astar` or `dstar_lite` (required)
-- `--goal X Y`: a goal cell; repeat the flag for multiple goals (e.g. `--goal 3 3 --goal 0 3`)
-- `--n-goals N`: generate `N` random goal cells instead of an explicit `--goal` list
-- `--seed S`: random seed used together with `--n-goals` (requires `--n-goals`)
-- `--auto-goals MAZE`: place goals automatically by detour index in `MAZE` (see below)
-- `-k N`, `--n-auto-goals N`: how many goals `--auto-goals` should place, default `4`
-- `--goal`, `--n-goals` and `--auto-goals` are mutually exclusive; if none is given, the algorithm defaults to the maze's 4-cell centre area
-- `--heuristic min_path|manhattan`: planning heuristic, default `min_path` (wall-aware shortest-known-distance). `manhattan` uses straight-line distance instead, ignoring wall knowledge. Only affects `--algo astar`; `dstar_lite` always uses its own Manhattan-to-current-position heuristic regardless of this flag
-- `--maze-name NAME`: maze name recorded in the log filename. The MMS protocol exposes only the maze's *dimensions*, never which file the GUI has loaded, so the name cannot be detected automatically — it has to come from the invocation. Resolution order: `--maze-name` if given, else the maze already named by `--auto-goals`, else the fallback `mms_<width>x<height>`. In practice, a run started with `--auto-goals 2015japan` already logs as `astar_2015japan_<timestamp>.json` without passing this flag; use it for manual-goal runs where nothing else names the maze
-- `--output-dir DIR`: base directory for the exported JSON log, default `results/logs/`; the file is written to a goal-count/algorithm subdirectory of it (`results/logs/one_goal/astar/`, `results/logs/four_goals/dstar_lite/`). The goal count is read back from the algorithm after it has resolved `--goal`/`--n-goals`/`--auto-goals`, so the bucket always reflects the run that actually happened; the default centre goal counts as one goal
-- `--no-log`: skip writing the JSON metrics log entirely (stderr diagnostics are unaffected); useful to avoid filling `results/logs/` during debugging/testing runs
+**Goals:** pick at most one of the following parameters; if none is given, the algorithm stops as soon as the first cell of the maze's centre 2×2 area is reached:
 
-> **Using conda instead of `.venv`?** The `.venv/bin/python` path above only applies to a `venv`-created environment. If you use conda, use the full path to your conda environment's Python interpreter instead:
->
-> ```bash
-> /path/to/miniconda/base/envs/[env_name]/bin/python run.py --algo [astar|dstar_lite]
-> ```
->
-> To find your exact interpreter path, activate your conda environment and run `which python`.
+   | Flags | Places |
+   |---|---|
+   | *(none)* | Default centre-area goal |
+   | `--goal X Y` *(repeatable)* | Explicit goal list, e.g. `--goal 3 3 --goal 0 3` |
+   | `--n-goals N` `[--seed S]` | `N` random goal cells |
+   | `--auto-goals MAZE` `[-k N]` | Deceptive goals by detour index, `N` of them (default `4`) — see [below](#automatic-goal-placement---auto-goals) |
 
-On completion, `run.py` writes a JSON metrics log to `results/logs/<goal-count>/<algo>/` (the same schema produced by headless `SimAPI` runs via `experiments/run_batch.py`), so GUI and batch runs are directly comparable — unless `--no-log` was passed, in which case no file is written and `--output-dir` is ignored.
+**Options:**
 
-### Automatic goal placement (`--auto-goals`)
+| Flag | Default | Description |
+|---|---|---|
+| `--heuristic {min_path,manhattan}` | `min_path` | Planning heuristic. `astar` only — `dstar_lite` always uses its own Manhattan-to-current-position heuristic. See [`src/algorithms/README.md`](../src/algorithms/README.md) |
+| `--maze-name NAME` | auto-detected | Maze name recorded in the log filename. MMS never reports the loaded file, so this is only needed for manual-goal runs — `--auto-goals` already names the maze |
+| `--output-dir DIR` | `results/logs/` | Base directory for the exported JSON log |
+| `--no-log` | off | Skip writing the JSON log (stderr diagnostics still print) |
 
-`--auto-goals` removes the manual copy-paste step from the goal workflow. Without it, running a placed-goal scenario in the GUI means running `tools/place_goals.py`, reading the `--goal X Y ...` line it prints, and pasting those coordinates into the "Run command" field — again for every maze and every goal count. With it, you name the maze once and the placement happens inside `run.py`:
+**Examples:**
 
 ```bash
-# Equivalent to pasting the output of: python3 tools/place_goals.py 2015japan -k 4
+.venv/bin/python run.py --algo astar
+.venv/bin/python run.py --algo dstar_lite --goal 3 3 --goal 0 3
+.venv/bin/python run.py --algo astar --n-goals 4 --seed 42
 .venv/bin/python run.py --algo astar --auto-goals 2015japan -k 4
 ```
 
-**The goals are identical to the tool's.** Both paths call the same `src.goal_placement.scenario_goals()`, which is deterministic — no randomness, fixed `(y, x)` tie-break — so for a given maze, start cell and `k` the result cannot differ. `--auto-goals` is a convenience over the same placement, not a second implementation of it, and `tools/place_goals.py` remains the way to *inspect* a placement (it also prints the detour score behind each goal, which `run.py` discards). `scenario_goals()` treats every `k ≥ 1` identically — `-k 1` places the single highest-detour cell, the same algorithm as any other `k` — see `tools/README.md` for the placement rule.
+On completion, `run.py` writes a JSON metrics log to `results/logs/<goal-count>/<algo>/` — the same schema produced by headless runs, so GUI and batch results are directly comparable. See [`src/metrics/README.md`](../src/metrics/README.md) for the export schema, unless `--no-log` was passed.
 
-**The start cell** is the robot's initial position (`(0, 0)`, the simulator convention), matching the default that `tools/place_goals.py` documents for `--start`.
+> [!NOTE]
+> **Using conda instead of `.venv`?** Replace the interpreter path with your conda environment's Python:
+> ```bash
+> /path/to/miniconda/envs/<env_name>/bin/python run.py --algo <astar|dstar_lite>
+> ```
+> Activate the environment and run `which python` to find the exact path.
 
-**Naming the maze is required, and is the one thing you must keep correct.** MMS's stdin/stdout protocol reports only the maze's width and height — it never tells the algorithm which maze file the GUI has loaded. Placement, however, needs the true wall layout (it runs BFS over the complete maze), so `run.py` has to parse the file itself and therefore has to be told which one. `MAZE` is resolved like the tool's argument — a bare name, `.txt` optional, looked up in `mazes/txt/` — and additionally accepts a path (absolute, or relative to the repository root) for mazes kept elsewhere, such as `mazes/maze_test.txt`:
+### Automatic goal placement (`--auto-goals`)
+
+`--auto-goals MAZE [-k N]` places `N` goals (default `4`) by detour index — cells that look close but are actually far behind walls, the most deceptive to a planner working from a partial map — computed from the start cell `(0, 0)`. See [`tools/README.md`](../tools/README.md) for the placement algorithm.
+
+`MAZE` resolves to a file in `mazes/txt/` (bare name, `.txt` optional), or a path — absolute, or relative to the repo root — for mazes kept elsewhere:
 
 ```bash
---auto-goals 2015japan          # -> mazes/txt/2015japan.txt
---auto-goals 2015japan.txt      # -> mazes/txt/2015japan.txt
+--auto-goals 2015japan            # -> mazes/txt/2015japan.txt
+--auto-goals 2015japan.txt        # -> mazes/txt/2015japan.txt
 --auto-goals mazes/maze_test.txt  # -> path relative to the repo root
 ```
 
-As a guard against a stale name left behind after switching mazes in the GUI, `run.py` compares the parsed file's dimensions with the simulator's and aborts on a mismatch:
-
-```text
-error: --auto-goals: '/…/mazes/txt/2015japan.txt' is 16x16, but the simulator
-reports 8x8 — the maze loaded in the GUI is not the one named here
-```
-
-Note the limit of this check: it only catches mismatches **of different size**. Two distinct 16×16 mazes are indistinguishable over the protocol, so if you load a different maze of the same dimensions the run will proceed with goals placed for the wrong layout. Update the flag when you change maze. Any other failure — missing or malformed file, or a maze with no reachable candidate cells for the requested `k` — also aborts with an `error: --auto-goals: …` message on stderr rather than falling back silently.
-
-**Example configuration:**
-
-   ![New Mouse Algorithm dialog](res/new_algorithm_dialog.png)
+> [!WARNING]
+> **Naming the maze correctly is your responsibility.** MMS's stdin/stdout protocol reports only the maze's width and height, never which file the GUI has loaded — `run.py` has to be told, and cannot verify it beyond a dimension check:
+> ```text
+> error: --auto-goals: '/…/mazes/txt/2015japan.txt' is 16x16, but the simulator
+> reports 8x8 — the maze loaded in the GUI is not the one named here
+> ```
+> This only catches size mismatches. Two mazes of the *same* dimensions are indistinguishable over the protocol — if you switch to a different same-size maze in the GUI without updating `--auto-goals`, the run proceeds with goals placed for the wrong layout.
 
 ## Step 4: Select a Maze
 
 1. Click the **Maze** button in the MMS window.
-2. Navigate to `mazes` and select a maze file (`.txt` format).
-   ![maze selection dialog](res/maze_selection.png)
+2. Navigate to `mazes/txt` and select a maze file (`.txt` format — see [`mazes/README.md`](../mazes/README.md) for the format spec).
 
-## Step 5: Run the Simulation
+![Maze selection dialog](res/maze_selection.png)
 
-1. Click the **Run** button to start the simulation.
-2. Watch the robot explore the maze in real-time. A small **legend window** (Tkinter, with a color swatch next to each entry) also opens in its own process, mapping the on-screen cell colors and text (e.g. `f-XXXh-YYY`, `g-XXXr-YYY`) to their meaning for the selected algorithm. Starting a new run automatically closes a legend window left open from a previous run, so they don't stack up.
-3. The **Stats** tab shows exploration metrics (distance, turns, effective distance, score).
-4. Wall discoveries and replanning events are logged to **stderr** as they happen — one consolidated `[WALL] (x, y) n e s w` line per sensing event (`_` marks an absent wall), and `[REPLAN] ...` lines with `cost_ratio`/`time_ms` rounded to 2 decimals; stdout is reserved for the MMS protocol.
-5. The simulation ends once the algorithm's goal condition is satisfied (or, for the default centre-area goal, as soon as the first of its 4 cells is reached). At that point the GUI clears all non-goal decoration and leaves only goal cells marked: reached goals in green (`g`), labelled with their 1-based reach order for a true multi-goal run; unreached default-centre-area cells stay dark green (`G`).
+> [!TIP]
+> Browse the full maze set — and copy names for `--auto-goals` — with the [online maze viewer](https://htmlpreview.github.io/?https://github.com/FrancescoGuarda/Rob-26-MazeSolver/blob/main/mazes/index.html).
 
-This runs all algorithms on all mazes and logs metrics to `results/logs/` without requiring MMS to be running.
+## Step 5: Run a Session
+
+1. Click **Run** to start the simulation.
+2. A **legend window** opens in its own process, mapping on-screen colors and text (e.g. `f-XXXh-YYY`, `g-XXXr-YYY`) to their meaning for the selected algorithm. Starting a new run auto-closes any legend window left over from the previous one.
+3. The **Stats** tab tracks exploration metrics (distance, turns, effective distance, score) live.
+4. Wall discoveries and replanning events stream to **stderr** — one `[WALL] (x, y) n e s w` line per sensing event (`_` = no wall) and one `[REPLAN] ...` line per replan, with `cost_ratio`/`time_ms` rounded to 2 decimals. stdout is reserved for the MMS protocol.
+5. The run ends once the goal condition is satisfied (for the default centre-area goal, as soon as its first cell is reached). The GUI then clears all non-goal decoration, leaving only goal cells marked: reached goals in green (`g`, labelled with 1-based reach order for a true multi-goal run), unreached default-centre cells in dark green (`G`).
+
+![Annotated MMS session: maze grid, Run Output log, and legend window](res/mms_gui_annotated.png)
 
 ## Troubleshooting
 
 | Issue | Solution |
-|-------|----------|
-| "Module not found" error | Ensure you are running from the repo root and the virtual environment is activated |
-| Algorithm hangs or crashes | Check `stderr` output; run locally with `scripts/batch_run.py` to get detailed error messages |
-| Maze file not found | Verify the path is correct and the file has a `.txt` extension |
-| On macOS: "mms.app is damaged" | Run `xattr -d com.apple.quarantine mms.app` in the simulator directory |
+|---|---|
+| "Module not found" error | Run from the repo root with the virtual environment activated |
+| Algorithm hangs or crashes | Check the **Run Output**/stderr panel; reproduce locally with `experiments/run_batch.py` for a detailed traceback |
+| Maze file not found | Verify the path and that the file has a `.txt` extension |
+| `--auto-goals` dimension error | The maze named in the Run command doesn't match the one loaded in the GUI — update `--auto-goals` to match |
+| macOS: "mms.app is damaged" | Run `xattr -d com.apple.quarantine mms.app` in the simulator directory |
