@@ -85,7 +85,7 @@ This report evaluates two search algorithms, A\* (full replanning) and D\*-Lite 
 
 **The Micromouse problem and the MMS simulator.** The Micromouse competition tasks a small autonomous robot with exploring an unknown grid maze from a fixed start to a fixed goal region. This project uses `mms`[$^{1}$](#ref1), which reproduces that setting through a GUI for visualisation and a text-based `stdin`/`stdout` protocol for wall queries, moves, turns, and display commands. Its competition-faithful design, built-in visualisation, and existing Python bindings motivated its adoption here, where it is further extended in §3.
 
-![Annotated `mms` GUI during a running D\*-Lite session: (1) wall segments and per-cell overlay text; (2) the maze grid; (3) the Run Output panel, logging sensing and replanning events; (4) the maze-selection path; (5) the algorithm-selection field; (6) the algorithm's GUI legend window.](res/mms_gui_annotated-light.png){width=90%}
+![Annotated `mms` GUI during a running D\*-Lite session: (1) wall segments and per-cell overlay text; (2) the maze grid; (3) the Run Output panel, logging sensing and replanning events; (4) the maze-selection path; (5) the algorithm-selection field; (6) the algorithm's GUI legend window.](res/mms_gui_annotated-light.png)
 
 **Search under partial observability.** Under the freespace assumption, an agent plans as though every unsensed cell were open, repairing its plan only when a sensed wall proves otherwise. This optimistic-planning principle underlies the D\* family of incremental replanners [$^{2}$](#ref2). The report compares two heuristic search strategies built on this principle: A\*[$^{3}$](#ref3), the classical best-first baseline, and D\*-Lite[$^{4}$](#ref4), designed explicitly to reuse prior search results rather than resolve the whole problem recursively from scratch.
 
@@ -150,9 +150,11 @@ D\*-Lite consistently expands between roughly two and three times fewer nodes th
 
 ## Search-cost scaling: evidence for incremental reuse
 
-A\*'s per-event search cost scales more steeply with residual distance to the goal than does D\*-Lite's, and this gap widens as k increases. Within the dense band of residual distances up to 30 cells, a linear regression of nodes expanded on residual distance shows A\*'s slope rising from approximately 1.8 at k = 1 to nearly 2.8 at k = 4, whereas D\*-Lite's remains comparatively flat. Pooled across all values of k, A\*'s slope is roughly three times steeper than D\*-Lite's (Figure 4). This provides direct empirical support for D\*-Lite's central claim (§3.3): repair cost scales with the *size of the region affected by a change*, rather than with the size of the whole remaining problem, whereas A\*'s from-scratch cost grows with the full remaining search space. 
+A\*'s per-event search cost scales more steeply with residual distance to the goal than does D\*-Lite's, and this gap widens as k increases. Within the dense band of residual distances up to 30 cells, a linear regression of nodes expanded on residual distance shows A\*'s slope rising from approximately 1.8 at k = 1 to nearly 2.8 at k = 4, whereas D\*-Lite's remains comparatively flat. 
 
 ![Nodes expanded as a function of residual distance to the goal, per replanning event, faceted by goal-count scenario (k = 1..4), with linear trend and 95% confidence band.](res/nodes_vs_residual_distance_by_k.png)
+
+Pooled across all values of k, A\*'s slope is roughly three times steeper than D\*-Lite's (Figure 4). This provides direct empirical support for D\*-Lite's central claim (§3.3): repair cost scales with the *size of the region affected by a change*, rather than with the size of the whole remaining problem, whereas A\*'s from-scratch cost grows with the full remaining search space. 
 
 ## Memory footprint of search structures
 
@@ -160,14 +162,14 @@ The two algorithms make opposite trade-offs between search cost and memory (Figu
 
 Table 2 summarises this pattern across all runs. D\*-Lite's median peak occupancy is more than double A\*'s (e.g., 182.5 vs. 69.0) and its median per-run mean occupancy is roughly four times higher (e.g., 116.58 vs. 29.51). No A\* run's peak occupancy exceeds 75% of the maze, whereas 31 of the 220 D\*-Lite runs exceed 90%, and four fill the maze entirely. This reverses the ordering established in §4.3: A\* achieves its bounded memory footprint at the cost of repeated search, whereas D\*-Lite achieves cheap repair at the cost of retained state. Neither algorithm dominates outright.
 
-![Memory occupancy of search structures over successive replanning events. Left: a single run (maze 00japan, k=4). Right: the same trend pooled across all runs.](res/memory_run_and_trend_combined.png){width=90%}
+![Memory occupancy of search structures over successive replanning events. Left: a single run (maze 00japan, k=4). Right: the same trend pooled across all runs.](res/memory_run_and_trend_combined.png)
 
 | Algorithm | Peak — median | Peak — $\sigma$ | Mean — median | Mean — $\sigma$ |
 |---|---|---|---|---|
 | A\* | 69.0 | 38.76 | 29.51 | 10.35 |
 | D\*-Lite | 182.5 | 71.63 | 116.58 | 47.21 |
 
-: Peak and per-run mean memory occupancy (cells, out of 256), median and standard deviation across all 220 runs per algorithm.
+: Peak and per-run mean memory occupancy (cells, out of 256), median and standard deviation across all runs.
 
 # Conclusions and Future Work
 
