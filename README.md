@@ -56,7 +56,7 @@ Follow the detailed setup instructions in [MMS Setup Guide](docs/mms.md) to inst
 - [Online maze viewer](https://htmlpreview.github.io/?https://github.com/FrancescoGuarda/Rob-26-MazeSolver/blob/main/mazes/index.html) — browse and visualize the maze set in the browser
 
 **Project Documentation:**
-- **[Final Project Report](docs/Rob-26-MazeSolver_report.md)** — Final project report with experimental results and analysis
+- **[Final Project Report](docs/Rob-26-MazeSolver_report.pdf)** — Final project report with experimental results and analysis
 
 ## Citations
 
