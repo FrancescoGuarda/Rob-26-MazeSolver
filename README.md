@@ -1,4 +1,8 @@
+[![Università di Brescia](https://img.shields.io/badge/Universit%C3%A0%20di%20Brescia-27326E?style=for-the-badge)](https://www.unibs.it/it)
+
 # Robotica 2026 - Maze Solver project
+
+![](/docs/res/project_preview.svg)
 
 ## Project Overview
 
