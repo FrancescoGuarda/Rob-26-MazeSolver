@@ -2,9 +2,6 @@
 numpy>=1.21.0
 pandas>=1.3.0
 
-# Mms environment 
-# TODO: add mms environment dependencies here
-
 # Visualization
 matplotlib>=3.4.0
 seaborn>=0.11.0
