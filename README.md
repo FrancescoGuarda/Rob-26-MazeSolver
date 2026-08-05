@@ -2,7 +2,7 @@
 
 # Robotica 2026 - Maze Solver project
 
-![](/docs/res/project_preview.svg)
+![](/docs/res/project_preview.png)
 
 ## Project Overview
 
