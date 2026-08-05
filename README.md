@@ -59,6 +59,12 @@ Follow the detailed setup instructions in [MMS Setup Guide](docs/mms.md) to inst
 **Maze Lookup:**
 - [Online maze viewer](https://htmlpreview.github.io/?https://github.com/FrancescoGuarda/Rob-26-MazeSolver/blob/main/mazes/index.html) — browse and visualize the maze set in the browser
 
+**Experimental Campaign:**
+- **[Batch Evaluation Script](experiments/run_batch.py)** — Headless script running both algorithms over the full maze corpus at every goal-count scenario and exporting metrics logs
+- **[Run-Log Analysis](notebooks/data_analysis.ipynb)** — Notebook comparing the two algorithms on replanning cost, per-event search cost, and memory occupancy, from the exported run logs
+- **[Goal-Placement Analysis](notebooks/goals_analysis.ipynb)** — Notebook visualizing the detour-index goal-placement algorithm and per-maze difficulty
+- **[Experimental Campaign Report](notebooks/report.md)** — Full write-up of the experimental setup, methodology, results, and caveats behind the final project report
+
 **Project Documentation:**
 - **[Final Project Report](docs/Rob-26-MazeSolver_report.pdf)** — Final project report with experimental results and analysis
 

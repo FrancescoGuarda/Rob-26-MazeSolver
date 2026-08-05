@@ -1,0 +1,3 @@
+Placeholder to keep this directory tracked by git (its contents are gitignored).
+
+Extract the MMS simulator here (`mms.app` on macOS, or the equivalent executable on Linux/Windows) — see `docs/mms.md`, Step 1. Keeping it inside the project, rather than elsewhere on disk, makes the repository root MMS's working directory when it runs the "Run command" field, so the relative virtual-environment path used throughout that guide (`.venv/bin/python`) resolves correctly without needing its full/global path.

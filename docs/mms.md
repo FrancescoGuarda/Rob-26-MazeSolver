@@ -15,12 +15,15 @@ Complete the **Installation** section of the [root README](../README.md#installa
 ## Step 1: Install the Simulator
 
 1. Download the [MMS release](https://github.com/mackorone/mms/releases) for your OS.
-2. Extract it somewhere convenient, e.g. `~/mms/`.
+2. Extract it into the project's [`app/`](../app/) directory, or the repository root.
+
+> [!NOTE]
+> **Keep the simulator inside the project.** MMS resolves relative paths in the Run command against its own working directory, not the algorithm's configured Directory field. Extracting it to `app/` or the repository root makes that directory the repo root, so the relative interpreter path used throughout this guide (`.venv/bin/python`) resolves without changes. If you install it elsewhere, use the interpreter's **full path** in the Run command instead (see [Run command](#run-command)).
 
 > [!IMPORTANT]
 > **macOS only:** opening `mms.app` may fail with *"mms.app is damaged and can't be opened."* This is Gatekeeper blocking an unsigned download, not a corrupt file — clear the quarantine attribute:
 > ```bash
-> cd ~/mms  # wherever you extracted mms.app
+> cd app  # or the repository root, wherever you extracted mms.app
 > xattr -d com.apple.quarantine mms.app
 > ```
 
@@ -56,6 +59,14 @@ Fill in the **New Mouse Algorithm** dialog:
 ```bash
 .venv/bin/python run.py --algo <astar|dstar_lite> [goals] [options]
 ```
+
+> [!NOTE]
+> **Windows?** The virtual environment's interpreter lives at a different path. Substitute it in every command below:
+>
+> | Platform | Interpreter path |
+> |---|---|
+> | macOS / Linux | `.venv/bin/python` |
+> | Windows | `.venv\Scripts\python.exe` |
 
 **Goals:** pick at most one of the following parameters; if none is given, the algorithm stops as soon as the first cell of the maze's centre 2×2 area is reached:
 
@@ -138,6 +149,7 @@ On completion, `run.py` writes a JSON metrics log to `results/logs/<goal-count>/
 | Issue | Solution |
 |---|---|
 | "Module not found" error | Run from the repo root with the virtual environment activated |
+| Run command fails with "No such file or directory" for `.venv/bin/python` | `mms.app` isn't inside the project (`app/` or repo root), so the relative interpreter path doesn't resolve — move it there (Step 1) or switch the Run command to the interpreter's full path |
 | Algorithm hangs or crashes | Check the **Run Output**/stderr panel; reproduce locally with `experiments/run_batch.py` for a detailed traceback |
 | Maze file not found | Verify the path and that the file has a `.txt` extension |
 | `--auto-goals` dimension error | The maze named in the Run command doesn't match the one loaded in the GUI — update `--auto-goals` to match |
